@@ -53,7 +53,7 @@ cp factory.example.yaml factory.yaml
 lao health
 lao run
 # In another terminal: add plans/*.md or use:
-lao run --plan plans/my_project.md --single-run
+lao --plan plans/my_project.md --single-run run
 ```
 
 ### CLI (`lao`)
@@ -61,12 +61,12 @@ lao run --plan plans/my_project.md --single-run
 | Command | Description |
 |--------|-------------|
 | `lao run` | Watch `plans/`, process queue (default if no subcommand) |
-| `lao run --plan FILE` | Ingest one plan and process |
-| `lao run --single-run` | One pass then exit |
+| `lao --plan FILE run` | Ingest one plan and process |
+| `lao --single-run run` | One pass then exit |
 | `lao status` | SQLite queue + token stats |
 | `lao health` | LM Studio reachability + model keys |
 | `lao reset-failed` | Move `failed` tasks back to `pending` |
-| `lao init` | Write `factory.example.yaml`, ensure dirs |
+| `lao init` | Write `factory.example.yaml`, create `.lao/workspaces/` + `plans/` |
 
 ### Global flags
 
@@ -79,6 +79,10 @@ lao run --plan plans/my_project.md --single-run
 | `--planner-model`, `--coder-model`, `--reviewer-model`, `--embedder-model` | Override keys without editing YAML |
 
 Environment: `LM_STUDIO_BASE_URL`, `OPENAI_API_KEY`, `LAO_CONFIG` (path to yaml), `TOTAL_RAM_GB`, `WORKSPACE_ROOT`, `PLANS_DIR`, `DB_PATH`. See [.env.example](.env.example).
+
+### Project layout (v1.1.1+)
+
+After `lao init` and copying `factory.yaml`, code for **`plans/MyPlan.md`** is written under **`.lao/workspaces/MyPlan/`**. The database defaults to **`.lao/state.db`**. **`plans/README.md`** is never treated as a plan. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Architecture
 
@@ -98,6 +102,7 @@ flowchart LR
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md) — publishing to PyPI
 - [site/index.html](site/index.html) — same landing page for local preview (mirrors [docs/index.html](docs/index.html) served on Pages)
 
 ## GitHub and GitHub Pages
@@ -116,6 +121,13 @@ cd local-ai-agent-orchestrator
 ```
 
 ## Changelog
+
+### v1.1.1
+
+- **Layout:** `lao init` creates **`.lao/workspaces/`** + **`plans/`**; SQLite defaults to **`.lao/state.db`**; per-plan workspace = **`.lao/workspaces/<plan-stem>/`** (from `plans/Foo.md` → `Foo`).
+- **Plans:** Ignore **`plans/README.md`** when scanning for plans.
+- **Defaults:** Reviewer model default **mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit** (adjust `key` to match `lms ls`).
+- **Docs:** [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md); local token notes template **`PYPI_PUBLISH.local.md`** (gitignored).
 
 ### v1.1.0
 

@@ -123,6 +123,24 @@ class TaskQueue:
             "UPDATE plans SET status = 'completed' WHERE id = ?", (plan_id,)
         )
 
+    def workspace_for_plan(self, plan_id: str) -> Path:
+        """
+        Per-plan workspace: <config_dir>/.lao/workspaces/<plan_stem>/
+        where plan_stem is the .md filename without extension.
+        """
+        row = self._conn.execute(
+            "SELECT filename FROM plans WHERE id = ?", (plan_id,)
+        ).fetchone()
+        s = get_settings()
+        if not row:
+            p = s.workspace_root
+            p.mkdir(parents=True, exist_ok=True)
+            return p.resolve()
+        stem = Path(row[0]).stem
+        root = (s.config_dir / ".lao" / "workspaces" / stem).resolve()
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
     # ── Task CRUD ────────────────────────────────────────────────────
 
     def add_tasks(self, plan_id: str, tasks: list[dict]):

@@ -6,9 +6,11 @@ openai_api_key: "lm-studio"
 total_ram_gb: 36
 
 paths:
-  workspace: ./workspace
+  # SQLite + WAL live under .lao/ (keeps project root clean).
+  database: ./.lao/state.db
   plans: ./plans
-  database: ./state.db
+  # Optional: legacy single workspace when no per-plan context (advanced).
+  # workspace: ./.lao/workspaces/_misc
 
 memory_gate:
   release_fraction: 0.75
@@ -39,11 +41,11 @@ models:
     supports_tools: true
     size_bytes: 17190972664
   reviewer:
-    key: "deepseek-r1-distill-qwen-32b-mlx"
+    key: "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit"
     context_length: 8192
     max_completion: 2048
     supports_tools: false
-    size_bytes: 26633743197
+    size_bytes: 18500000000
   embedder:
     key: "text-embedding-nomic-embed-text-v1.5"
     context_length: 2048

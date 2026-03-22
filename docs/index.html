@@ -113,7 +113,7 @@
     <header>
       <h1>Local AI Agent Orchestrator</h1>
       <p class="tagline">Planner, coder, and reviewer agents on your machine — LM Studio, SQLite, memory-safe model swaps.</p>
-      <span class="badge">v1.1.0 · GPL-3.0-only · Open source</span>
+      <span class="badge">v1.1.1 · GPL-3.0-only · Open source</span>
       <div class="gh-row">
         <a class="gh-btn primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">GitHub repository</a>
         <a class="gh-btn" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues" rel="noopener">Issues</a>
@@ -143,8 +143,12 @@
         <p><code>factory.yaml</code> + CLI <code>lao</code>: URL, RAM, paths, per-role model keys.</p>
       </div>
       <div class="card">
-        <h3>Reviewer (v1.1.0)</h3>
+        <h3>Reviewer (v1.1+)</h3>
         <p>Reasoning models (e.g. R1 distill) can think before they answer — LAO strips <em>think</em> blocks and finds <code>APPROVED</code> / <code>REJECTED</code> on any line.</p>
+      </div>
+      <div class="card">
+        <h3>Clean layout (v1.1.1)</h3>
+        <p>SQLite and generated code live under <code>.lao/</code>: <code>.lao/state.db</code> and <code>.lao/workspaces/&lt;plan-stem&gt;/</code> per <code>plans/*.md</code>. No root <code>workspace/</code> folder.</p>
       </div>
     </div>
 
@@ -163,11 +167,12 @@ lao run</code></pre>
       <li><strong>Configuration</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">docs/CONFIGURATION.md</a></li>
       <li><strong>Architecture</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
       <li><strong>Contributing</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONTRIBUTING.md">docs/CONTRIBUTING.md</a></li>
+      <li><strong>PyPI publishing</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/PYPI_PUBLISH.md">docs/PYPI_PUBLISH.md</a></li>
       <li><strong>License</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/LICENSE">GPL-3.0</a></li>
     </ul>
 
     <footer>
-      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator">KEYHAN-A/local-ai-agent-orchestrator</a> · <strong>v1.1.0</strong> · PyPI name <code>local-ai-agent-orchestrator</code> · CLI <code>lao</code>
+      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator">KEYHAN-A/local-ai-agent-orchestrator</a> · <strong>v1.1.1</strong> · PyPI name <code>local-ai-agent-orchestrator</code> · CLI <code>lao</code>
     </footer>
   </div>
 </body>

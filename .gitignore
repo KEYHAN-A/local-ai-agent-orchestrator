@@ -7,6 +7,10 @@ __pycache__/
 dist/
 build/
 .env
+# Local PyPI / secrets notes (see docs/PYPI_PUBLISH.md for the public guide)
+PYPI_PUBLISH.local.md
+# LAO runtime: DB, WAL, per-plan workspaces, caches — keep repo root clean
+.lao/
 state.db
 state.db-shm
 state.db-wal
@@ -19,7 +23,7 @@ None-wal
 .DS_Store
 *.log
 
-# Generated workspace (keep structure)
+# Legacy single workspace (optional)
 workspace/*
 !workspace/.gitkeep
 

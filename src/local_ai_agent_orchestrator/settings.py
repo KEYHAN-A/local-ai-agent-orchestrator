@@ -47,12 +47,12 @@ def _default_models() -> dict[str, ModelConfig]:
             description="Coder model",
         ),
         "reviewer": ModelConfig(
-            key="deepseek-r1-distill-qwen-32b-mlx",
+            key="mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
             context_length=8192,
             max_completion=2048,
             supports_tools=False,
-            size_bytes=26_633_743_197,
-            description="Reviewer model",
+            size_bytes=18_500_000_000,
+            description="Reviewer (MLX 4-bit R1 distill)",
         ),
         "embedder": ModelConfig(
             key="text-embedding-nomic-embed-text-v1.5",
@@ -69,9 +69,12 @@ def _default_models() -> dict[str, ModelConfig]:
 class Settings:
     lm_studio_base: str = "http://127.0.0.1:1234"
     openai_api_key: str = "lm-studio"
-    workspace_root: Path = field(default_factory=lambda: Path.cwd() / "workspace")
+    # Directory containing factory.yaml (or cwd if no config file).
+    config_dir: Path = field(default_factory=Path.cwd)
+    # Fallback when no per-plan workspace is active (rare); override via paths.workspace in YAML.
+    workspace_root: Path = field(default_factory=lambda: Path.cwd() / ".lao" / "workspaces" / "_misc")
     plans_dir: Path = field(default_factory=lambda: Path.cwd() / "plans")
-    db_path: Path = field(default_factory=lambda: Path.cwd() / "state.db")
+    db_path: Path = field(default_factory=lambda: Path.cwd() / ".lao" / "state.db")
     total_ram_gb: Optional[float] = None
 
     models: dict[str, ModelConfig] = field(default_factory=_default_models)
@@ -117,10 +120,16 @@ def init_settings(
     """
     global _settings
     cwd = cwd or Path.cwd()
+    if config_path and config_path.is_file():
+        config_dir = config_path.resolve().parent
+    else:
+        config_dir = cwd.resolve()
+
     base = Settings(
-        workspace_root=cwd / "workspace",
-        plans_dir=cwd / "plans",
-        db_path=cwd / "state.db",
+        config_dir=config_dir,
+        workspace_root=config_dir / ".lao" / "workspaces" / "_misc",
+        plans_dir=config_dir / "plans",
+        db_path=config_dir / ".lao" / "state.db",
     )
 
     # Environment

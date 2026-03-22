@@ -22,6 +22,7 @@ from local_ai_agent_orchestrator.phases import (
 )
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import TaskQueue
+from local_ai_agent_orchestrator.tools import use_plan_workspace
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +82,8 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
             )
 
             try:
-                coder_phase(mm, queue, task)
+                with use_plan_workspace(queue, task.plan_id):
+                    coder_phase(mm, queue, task)
                 processed += 1
             except Exception as e:
                 log.error(f"Coder failed on task #{task.id}: {e}")
@@ -94,7 +96,8 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
             task = queue.get_task(task.id)
             if task and task.status == "coded":
                 try:
-                    reviewer_phase(mm, queue, task)
+                    with use_plan_workspace(queue, task.plan_id):
+                        reviewer_phase(mm, queue, task)
                     processed += 1
                 except Exception as e:
                     log.error(f"Reviewer failed on task #{task.id}: {e}")
@@ -107,7 +110,8 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
         task = queue.next_coded()
         if task:
             try:
-                reviewer_phase(mm, queue, task)
+                with use_plan_workspace(queue, task.plan_id):
+                    reviewer_phase(mm, queue, task)
                 processed += 1
             except Exception as e:
                 log.error(f"Reviewer failed on task #{task.id}: {e}")
@@ -128,6 +132,8 @@ def _scan_for_new_plans(queue: TaskQueue) -> list[tuple[Path, str, str]]:
     new_plans = []
 
     for plan_file in sorted(s.plans_dir.glob("*.md")):
+        if plan_file.name.upper() == "README.MD":
+            continue
         try:
             plan_text = plan_file.read_text(encoding="utf-8")
         except Exception as e:
@@ -201,8 +207,10 @@ def print_status(queue: TaskQueue):
     print(f"    Total:      {tokens['prompt_tokens'] + tokens['completion_tokens']:>10,}")
 
     print(f"\n  Paths:")
+    print(f"    Config dir: {s.config_dir}")
     print(f"    Database:   {s.db_path}")
-    print(f"    Workspace:  {s.workspace_root}")
+    print(f"    Workspaces: {s.config_dir / '.lao' / 'workspaces'}/<plan-stem>/ (per plan)")
+    print(f"    Fallback:   {s.workspace_root}")
     print(f"    Plans:      {s.plans_dir}")
     print(f"{'='*60}\n")
 
@@ -269,6 +277,8 @@ def run_entry(
         datefmt="%H:%M:%S",
     )
 
+    (s.config_dir / ".lao").mkdir(parents=True, exist_ok=True)
+    (s.config_dir / ".lao" / "workspaces").mkdir(parents=True, exist_ok=True)
     s.workspace_root.mkdir(parents=True, exist_ok=True)
     s.plans_dir.mkdir(parents=True, exist_ok=True)
 
@@ -298,7 +308,7 @@ def run_entry(
     log.info(f"{'='*60}")
     log.info("  Local AI Agent Orchestrator")
     log.info(f"  Models: {len(s.models)} configured")
-    log.info(f"  Workspace: {s.workspace_root}")
+    log.info(f"  Per-plan workspaces: {s.config_dir / '.lao' / 'workspaces'}/<plan-stem>/")
     log.info(f"  Plans: {s.plans_dir}")
     log.info(f"  Database: {s.db_path}")
     log.info(f"{'='*60}")

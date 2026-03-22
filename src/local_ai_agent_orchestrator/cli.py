@@ -30,9 +30,8 @@ def _write_example_config(dest: Path) -> None:
         "openai_api_key": "lm-studio",
         "total_ram_gb": 36,
         "paths": {
-            "workspace": "./workspace",
             "plans": "./plans",
-            "database": "./state.db",
+            "database": "./.lao/state.db",
         },
         "memory_gate": {
             "release_fraction": 0.75,
@@ -66,12 +65,12 @@ def _write_example_config(dest: Path) -> None:
                 "description": "Coder",
             },
             "reviewer": {
-                "key": "deepseek-r1-distill-qwen-32b-mlx",
+                "key": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
                 "context_length": 8192,
                 "max_completion": 2048,
                 "supports_tools": False,
-                "size_bytes": 26633743197,
-                "description": "Reviewer",
+                "size_bytes": 18500000000,
+                "description": "Reviewer (MLX 4-bit R1 distill)",
             },
             "embedder": {
                 "key": "text-embedding-nomic-embed-text-v1.5",
@@ -148,10 +147,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "init":
         _write_example_config(cwd / "factory.example.yaml")
-        (cwd / "workspace").mkdir(exist_ok=True)
+        (cwd / ".lao" / "workspaces").mkdir(parents=True, exist_ok=True)
         (cwd / "plans").mkdir(exist_ok=True)
-        print("Created workspace/ and plans/ if missing.")
-        print("Copy factory.example.yaml to factory.yaml and edit model keys for your machine.")
+        print("Created .lao/workspaces/, plans/, and factory.example.yaml.")
+        print("Copy factory.example.yaml to factory.yaml and edit model keys (see `lms ls`).")
+        print("Each plan plans/Foo.md uses workspace .lao/workspaces/Foo/ — README.md in plans/ is ignored.")
         return
 
     cfg_path = args.config

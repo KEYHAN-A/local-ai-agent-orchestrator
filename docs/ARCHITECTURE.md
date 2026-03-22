@@ -17,8 +17,8 @@
 
 1. **Plans:** New `.md` files under `plans/` (or `--plan`) are hashed; new content gets a `plan_id` and architect run.
 2. **Architect:** Single chat completion; output parsed as JSON array of micro-tasks; inserted into SQLite.
-3. **Coder:** For each pending task, load coder model, optional embedding retrieval, tool loop until final message.
-4. **Reviewer:** Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then any line starting with `APPROVED` / `REJECTED` is used for the verdict; state transitions.
+3. **Coder:** For each pending task, load coder model, optional embedding retrieval, tool loop until final message. File tools run inside **`use_plan_workspace`**: `.lao/workspaces/<plan-stem>/` derived from the plan’s `.md` filename.
+4. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then any line starting with `APPROVED` / `REJECTED` is used for the verdict; state transitions.
 5. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
 
 ## Model swapping

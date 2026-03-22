@@ -9,18 +9,39 @@ phases module and can also be wired into OpenAI function-calling tool schemas.
 import os
 import subprocess
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional, TYPE_CHECKING
 
 from local_ai_agent_orchestrator.settings import get_settings
 
+if TYPE_CHECKING:
+    from local_ai_agent_orchestrator.state import TaskQueue
+
 log = logging.getLogger(__name__)
+
+_ACTIVE_WORKSPACE: ContextVar[Optional[Path]] = ContextVar("lao_active_workspace", default=None)
 
 # ── File Operations ──────────────────────────────────────────────────
 
 
 def _workspace_root() -> Path:
-    return get_settings().workspace_root
+    w = _ACTIVE_WORKSPACE.get()
+    if w is not None:
+        return w.resolve()
+    return get_settings().workspace_root.resolve()
+
+
+@contextmanager
+def use_plan_workspace(queue: "TaskQueue", plan_id: str) -> Iterator[Path]:
+    """Set the active workspace to this plan's `.lao/workspaces/<stem>/` for the block."""
+    path = queue.workspace_for_plan(plan_id)
+    token = _ACTIVE_WORKSPACE.set(path)
+    try:
+        yield path
+    finally:
+        _ACTIVE_WORKSPACE.reset(token)
 
 
 def file_read(path: str, max_lines: int = 500) -> str:
