@@ -265,7 +265,7 @@ def _parse_architect_output(content: str) -> list[dict]:
     content = _strip_thinking_blocks(content)
 
     if not content:
-        raise ValueError("Architect response was only a <think> block with no JSON output")
+        raise ValueError("Architect response was only chain-of-thought with no JSON output")
 
     # Strip markdown code fences
     if content.startswith("```"):
