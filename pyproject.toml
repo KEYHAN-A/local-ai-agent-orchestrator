@@ -35,7 +35,11 @@ lao = "local_ai_agent_orchestrator.cli:main"
 local-ai-agent-orchestrator = "local_ai_agent_orchestrator.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USER/local-ai-agent-orchestrator"
+Homepage = "https://KEYHAN-A.github.io/local-ai-agent-orchestrator/"
+Repository = "https://github.com/KEYHAN-A/local-ai-agent-orchestrator"
+Documentation = "https://KEYHAN-A.github.io/local-ai-agent-orchestrator/"
+"Source Code" = "https://github.com/KEYHAN-A/local-ai-agent-orchestrator"
+"Issue Tracker" = "https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

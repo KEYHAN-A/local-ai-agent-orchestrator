@@ -1,5 +1,12 @@
 # Local AI Agent Orchestrator
 
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-KEYHAN--A%2Flocal--ai--agent--orchestrator-181717?logo=github)](https://github.com/KEYHAN-A/local-ai-agent-orchestrator)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-222?logo=github)](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
+
+**Repository:** [github.com/KEYHAN-A/local-ai-agent-orchestrator](https://github.com/KEYHAN-A/local-ai-agent-orchestrator)  
+**Live site:** [KEYHAN-A.github.io/local-ai-agent-orchestrator](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
+
 **License:** [GPL-3.0-only](LICENSE)
 
 A lightweight, framework-free **multi-agent coding orchestrator** for **local LLMs** served by [LM Studio](https://lmstudio.ai/) (OpenAI-compatible API). It runs a **planner → coder → reviewer** pipeline with **SQLite-backed** task queues, **explicit model load/unload**, and a **macOS memory gate** to reduce swap thrashing when swapping 20GB+ models on unified memory.
@@ -91,22 +98,22 @@ flowchart LR
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-- [site/index.html](site/index.html) — open in a browser for a simple landing page
+- [site/index.html](site/index.html) — same landing page for local preview (mirrors [docs/index.html](docs/index.html) served on Pages)
 
-## Publish to GitHub (you run these)
+## GitHub and GitHub Pages
 
-1. Create a **public** repository, e.g. `local-ai-agent-orchestrator`.
-2. Update `pyproject.toml` `[project.urls] Homepage` with your repo URL.
-3. Commit and push:
+This project is **open source** on GitHub: [KEYHAN-A/local-ai-agent-orchestrator](https://github.com/KEYHAN-A/local-ai-agent-orchestrator).
+
+**GitHub Pages** serves the static site from the `docs/` folder on `main` (with [docs/.nojekyll](docs/.nojekyll) so paths are served as static files):
+
+- **Live site:** [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
+
+To clone and contribute:
 
 ```bash
-git remote add origin git@github.com:YOUR_USER/local-ai-agent-orchestrator.git
-git branch -M main
-git add -A && git commit -m "chore: initial open source release"
-git push -u origin main
+git clone https://github.com/KEYHAN-A/local-ai-agent-orchestrator.git
+cd local-ai-agent-orchestrator
 ```
-
-Replace `YOUR_USER` and use HTTPS if you prefer.
 
 ## Disclaimer
 
