@@ -27,8 +27,9 @@ orchestration:
 models:
   planner:
     key: "qwen_qwen3.5-35b-a3b"
-    context_length: 16384
-    max_completion: 4096
+    # Large plans need high context; JSON task lists need a high max_completion.
+    context_length: 32768
+    max_completion: 16384
     supports_tools: true
     size_bytes: 21513639040
   coder:

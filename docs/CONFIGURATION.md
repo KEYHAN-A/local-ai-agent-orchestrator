@@ -20,6 +20,10 @@ Top-level keys:
 
 Roles: `planner`, `coder`, `reviewer`, `embedder`.
 
+**Planner (`models.planner`):** Large markdown plans need a high **`context_length`** so the full plan fits in the prompt. The architect emits a **JSON array of micro-tasks**, which can be long — set **`max_completion`** high as well (defaults in `factory.example.yaml` use `32768` / `16384`). If you see truncated JSON or `finish_reason=length` errors, increase both values in **`factory.yaml`** and reload the model in LM Studio with the same context size.
+
+**Reviewer (`models.reviewer`):** Reasoning models (e.g. DeepSeek-R1 distill) may emit *think*-tagged chain-of-thought before `APPROVED` or `REJECTED: …`. As of **v1.1.0**, the orchestrator strips those blocks and scans line-by-line for the verdict, so you only need a valid **`key`** and appropriate **`context_length`** / **`max_completion`** in YAML.
+
 ### Discovering model `key` values
 
 - LM Studio CLI: `lms ls`

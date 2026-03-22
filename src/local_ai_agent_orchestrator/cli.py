@@ -51,8 +51,8 @@ def _write_example_config(dest: Path) -> None:
         "models": {
             "planner": {
                 "key": "qwen_qwen3.5-35b-a3b",
-                "context_length": 16384,
-                "max_completion": 4096,
+                "context_length": 32768,
+                "max_completion": 16384,
                 "supports_tools": True,
                 "size_bytes": 21513639040,
                 "description": "Architect / planner",

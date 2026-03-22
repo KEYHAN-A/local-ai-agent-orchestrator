@@ -13,7 +13,7 @@ A lightweight, framework-free **multi-agent coding orchestrator** for **local LL
 
 - **Planner:** decomposes a master plan into file-level micro-tasks (JSON).
 - **Coder:** implements tasks with tool use (`file_read`, `file_write`, `shell_exec`, …).
-- **Reviewer:** validates output (APPROVED / REJECTED with feedback).
+- **Reviewer:** validates output (APPROVED / REJECTED with feedback); **v1.1.0+** parses verdicts after stripping reasoning / *think*-block prefixes (R1-style models).
 - **Embedder:** optional semantic file retrieval before coding (Nomic via LM Studio).
 
 ## Why not CrewAI / LangChain here?
@@ -114,6 +114,17 @@ To clone and contribute:
 git clone https://github.com/KEYHAN-A/local-ai-agent-orchestrator.git
 cd local-ai-agent-orchestrator
 ```
+
+## Changelog
+
+### v1.1.0
+
+- **Reviewer:** Strip chain-of-thought (*think* tags) and detect `APPROVED` / `REJECTED` on any line — fixes false rejections from DeepSeek-R1–style reasoning before the verdict.
+- Docs and landing page updated for this release.
+
+### v1.0.0
+
+- Initial stable release: `lao` CLI, planner / coder / reviewer pipeline, SQLite state, memory gate, GitHub Pages docs.
 
 ## Disclaimer
 

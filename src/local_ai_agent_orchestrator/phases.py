@@ -35,6 +35,96 @@ from local_ai_agent_orchestrator.tools import (
 
 log = logging.getLogger(__name__)
 
+# Strip model chain-of-thought (e.g. Qwen3 / DeepSeek-R1 distill) before parsing.
+_THINKING_BLOCK_RES = (
+    re.compile(r"\x3cthink\x3e[\s\S]*?\x3c/think\x3e", re.IGNORECASE),
+)
+
+
+def _strip_thinking_blocks(text: str) -> str:
+    """Remove chain-of-thought wrappers so verdict / JSON parsers see the answer."""
+    for pat in _THINKING_BLOCK_RES:
+        text = pat.sub("", text)
+    return text.strip()
+
+
+def _estimate_chat_prompt_tokens(messages: list[dict]) -> int:
+    """
+    Approximate token count for architect/coder-style chat messages.
+    Uses cl100k_base when tiktoken is available; otherwise a char heuristic.
+    """
+    try:
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        total = 0
+        for m in messages:
+            body = m.get("content") or ""
+            total += 4 + len(enc.encode(body))
+        return total
+    except Exception:
+        return sum(len((m.get("content") or "")) // 3 + 4 for m in messages)
+
+
+def _extract_first_json_array(text: str) -> str | None:
+    """
+    Find the first top-level JSON array by bracket depth, respecting strings.
+    Avoids greedy ``[...]`` regex that can span past the real array end.
+    """
+    start = text.find("[")
+    if start < 0:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    i = start
+    while i < len(text):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        i += 1
+    return None
+
+
+def _architect_max_tokens(planner_cfg, messages: list[dict]) -> int:
+    """
+    Cap completion tokens so prompt + completion fits in context_length.
+    """
+    prompt_est = _estimate_chat_prompt_tokens(messages)
+    ctx = planner_cfg.context_length
+    reserved = 256
+    headroom = ctx - prompt_est - reserved
+    if headroom < 1024:
+        raise ValueError(
+            f"Plan is too large for the planner model context: context_length={ctx}, "
+            f"estimated prompt tokens ~{prompt_est}. Raise models.planner.context_length "
+            "in factory.yaml (e.g. 65536) or split the plan into smaller markdown files."
+        )
+    max_out = min(planner_cfg.max_completion, headroom)
+    if max_out < planner_cfg.max_completion:
+        log.warning(
+            "[Architect] max_tokens=%s (capped from max_completion=%s; context=%s, ~prompt_tokens=%s)",
+            max_out,
+            planner_cfg.max_completion,
+            ctx,
+            prompt_est,
+        )
+    return max_out
+
 
 def _get_client() -> OpenAI:
     s = get_settings()
@@ -105,13 +195,17 @@ def architect_phase(
 
     log.info(f"[Architect] Decomposing plan {plan_id} ({len(plan_text)} chars)")
 
+    max_out = _architect_max_tokens(cfg, messages)
+
     try:
         response = _llm_call(
             client, model_key, messages,
-            max_tokens=cfg.max_completion,
+            max_tokens=max_out,
             temperature=0.3,
         )
-        content = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        content = choice.message.content or ""
+        finish_reason = getattr(choice, "finish_reason", None)
         duration = time.time() - start
         usage = response.usage
 
@@ -122,7 +216,24 @@ def architect_phase(
             duration_seconds=duration, success=True,
         )
 
-        tasks = _parse_architect_output(content)
+        try:
+            tasks = _parse_architect_output(content)
+        except ValueError as ve:
+            if finish_reason == "length":
+                raise ValueError(
+                    "Architect hit the output token limit (finish_reason=length). "
+                    "Increase models.planner.max_completion and models.planner.context_length "
+                    "in factory.yaml, or split the plan into smaller files so fewer micro-tasks "
+                    "are produced per run."
+                ) from ve
+            raise
+
+        if finish_reason == "length":
+            log.warning(
+                "[Architect] finish_reason=length — if the task list looks short, raise max_completion "
+                "or split the plan; JSON parsed but output may still be incomplete."
+            )
+
         if not tasks:
             raise ValueError(f"Architect produced no tasks. Raw output:\n{content[:500]}")
 
@@ -150,8 +261,8 @@ def _parse_architect_output(content: str) -> list[dict]:
     if not content or not content.strip():
         raise ValueError("Architect returned an empty response")
 
-    # Strip Qwen3 chain-of-thought <think> blocks before parsing
-    content = re.sub(r"<think>[\s\S]*?</think>", "", content, flags=re.IGNORECASE).strip()
+    # Strip chain-of-thought blocks before parsing
+    content = _strip_thinking_blocks(content)
 
     if not content:
         raise ValueError("Architect response was only a <think> block with no JSON output")
@@ -162,16 +273,30 @@ def _parse_architect_output(content: str) -> list[dict]:
         content = re.sub(r"\n?```$", "", content)
         content = content.strip()
 
-    # Try to find a JSON array anywhere in the response
-    match = re.search(r"\[[\s\S]*\]", content)
-    if match:
-        content = match.group()
+    candidates: list[str] = []
+    extracted = _extract_first_json_array(content)
+    if extracted:
+        candidates.append(extracted)
+    stripped = content.strip()
+    if stripped not in candidates:
+        candidates.append(stripped)
 
-    try:
-        tasks = json.loads(content)
-    except json.JSONDecodeError as e:
-        log.error(f"[Architect] JSON parse failed: {e}\nContent: {content[:500]}")
-        raise ValueError(f"Failed to parse architect output as JSON: {e}")
+    last_err: json.JSONDecodeError | None = None
+    tasks = None
+    for cand in candidates:
+        try:
+            tasks = json.loads(cand)
+            last_err = None
+            break
+        except json.JSONDecodeError as e:
+            last_err = e
+            continue
+
+    if last_err is not None or tasks is None:
+        assert last_err is not None
+        preview = (candidates[0] if candidates else content)[:800]
+        log.error(f"[Architect] JSON parse failed: {last_err}\nContent (preview): {preview}")
+        raise ValueError(f"Failed to parse architect output as JSON: {last_err}")
 
     if not isinstance(tasks, list):
         raise ValueError(f"Expected JSON array, got {type(tasks).__name__}")
@@ -355,6 +480,44 @@ def _coder_no_tools(
     return content
 
 
+def _parse_reviewer_verdict(raw: str) -> tuple[bool, str]:
+    """
+    Parse APPROVED / REJECTED from reviewer output.
+    Strips chain-of-thought blocks, then scans lines so reasoning-first models still work.
+    Returns (approved, feedback_text).
+    """
+    text = _strip_thinking_blocks(raw)
+    if not text:
+        return False, (raw.strip() or "Empty reviewer response")
+
+    def _classify_line(line: str) -> str | None:
+        s = line.strip().strip("*").strip("`").strip()
+        if not s:
+            return None
+        u = s.upper()
+        if u.startswith("APPROVED"):
+            return "approved"
+        if u.startswith("REJECTED"):
+            return "rejected"
+        return None
+
+    for line in text.splitlines():
+        c = _classify_line(line)
+        if c == "approved":
+            return True, text
+        if c == "rejected":
+            return False, text
+
+    tail = text.rsplit("\n", 1)[-1]
+    c = _classify_line(tail)
+    if c == "approved":
+        return True, text
+    if c == "rejected":
+        return False, text
+
+    return False, text
+
+
 # ── Phase 3: Reviewer ────────────────────────────────────────────────
 
 
@@ -410,15 +573,12 @@ def reviewer_phase(
             duration_seconds=duration, success=True,
         )
 
-        # Parse verdict
-        verdict = content.strip()
-        approved = verdict.upper().startswith("APPROVED")
+        approved, feedback = _parse_reviewer_verdict(content)
 
         if approved:
             queue.mark_completed(task.id)
             log.info(f"[Reviewer] APPROVED task #{task.id} in {duration:.1f}s")
         else:
-            feedback = verdict
             if task.attempt + 1 >= task.max_attempts:
                 queue.mark_failed(task.id, f"Max attempts reached. Last feedback: {feedback}")
                 log.warning(f"[Reviewer] Task #{task.id} FAILED after {task.max_attempts} attempts")

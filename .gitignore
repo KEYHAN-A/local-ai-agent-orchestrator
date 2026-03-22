@@ -10,6 +10,10 @@ build/
 state.db
 state.db-shm
 state.db-wal
+# Misconfigured DB path (SQLite sometimes creates these as literal "None")
+None
+None-shm
+None-wal
 *.sqlite
 .cursor/
 .DS_Store

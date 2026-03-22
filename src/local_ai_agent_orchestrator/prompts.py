@@ -19,7 +19,9 @@ Rules:
 - Write a precise description of what that file must contain or what changes to make.
 - List dependencies (other task titles that must complete first).
 - Order tasks so foundational files (configs, types, utils) come before files that import them.
-- Output ONLY a JSON array. No markdown, no explanation.
+- Output ONLY a single valid JSON array. No markdown fences, no commentary before or after.
+- In JSON strings, escape double quotes as \\" and use \\n for newlines — invalid JSON will fail the pipeline.
+- Keep descriptions concise when the plan is large so the full array fits in one response.
 
 JSON schema for each task:
 {"title": "string", "description": "string", "file_paths": ["string"], "dependencies": ["string"]}"""
