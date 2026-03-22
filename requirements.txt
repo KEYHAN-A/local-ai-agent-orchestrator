@@ -1,0 +1,6 @@
+# For pip-only workflows (no editable install). Prefer: pip install -e .
+openai>=1.0
+requests>=2.28
+tiktoken>=0.5
+watchdog>=3.0
+pyyaml>=6.0

@@ -1,0 +1,23 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.env
+state.db
+state.db-shm
+state.db-wal
+*.sqlite
+.cursor/
+.DS_Store
+*.log
+
+# Generated workspace (keep structure)
+workspace/*
+!workspace/.gitkeep
+
+# Optional: local test plans
+# plans/*.md
