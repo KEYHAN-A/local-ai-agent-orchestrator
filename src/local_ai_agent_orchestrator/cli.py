@@ -72,12 +72,12 @@ def _write_example_config(dest: Path) -> None:
                 "description": "Coder",
             },
             "reviewer": {
-                "key": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
+                "key": "deepseek-r1-distill-qwen-32b",
                 "context_length": 8192,
                 "max_completion": 2048,
                 "supports_tools": False,
                 "size_bytes": 18500000000,
-                "description": "Reviewer (MLX 4-bit R1 distill)",
+                "description": "Reviewer (DeepSeek R1 Distill Qwen 32B)",
             },
             "embedder": {
                 "key": "text-embedding-nomic-embed-text-v1.5",
@@ -106,7 +106,7 @@ def _default_model_profiles() -> dict[str, dict[str, str]]:
         "medium": {
             "planner": "qwen_qwen3.5-35b-a3b",
             "coder": "qwen/qwen3-coder-30b",
-            "reviewer": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
+            "reviewer": "deepseek-r1-distill-qwen-32b",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
         },
         "large": {
@@ -336,7 +336,12 @@ def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
 
 
 def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
-    ui.print_header("Interactive Home", "Environment status and guided next actions.")
+    ui.print_header(
+        "Interactive Home",
+        "Environment status and guided next actions.\n"
+        "LAO is a local planner-coder-reviewer orchestration system for long-running coding workflows.\n"
+        "Website: https://lao.keyhan.info",
+    )
     cfg = cfg_path or (cwd / "factory.yaml")
     has_config = cfg.is_file()
 
@@ -485,94 +490,98 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    cfg_path = _resolve_config_path(cwd, args.config)
+    try:
+        cfg_path = _resolve_config_path(cwd, args.config)
 
-    if args.command is None and sys.stdout.isatty():
-        action = _home_menu(cwd, cfg_path)
-        if action == 1:
-            _run_init(cwd, skip_readme=False, no_interactive=False)
+        if args.command is None and sys.stdout.isatty():
+            action = _home_menu(cwd, cfg_path)
+            if action == 1:
+                _run_init(cwd, skip_readme=False, no_interactive=False)
+                return
+            if action == 3:
+                args.command = "health"
+            elif action == 4:
+                args.command = "configure-models"
+            elif action == 5:
+                return
+            else:
+                args.command = "run"
+
+        if args.command == "init":
+            _run_init(cwd, skip_readme=args.skip_readme, no_interactive=args.no_interactive)
             return
-        if action == 3:
-            args.command = "health"
-        elif action == 4:
-            args.command = "configure-models"
-        elif action == 5:
+
+        model_keys = {}
+        if args.planner_model:
+            model_keys["planner"] = args.planner_model
+        if args.coder_model:
+            model_keys["coder"] = args.coder_model
+        if args.reviewer_model:
+            model_keys["reviewer"] = args.reviewer_model
+        if args.embedder_model:
+            model_keys["embedder"] = args.embedder_model
+
+        overrides = {}
+        if args.lm_studio_base:
+            overrides["lm_studio_base"] = args.lm_studio_base
+        if args.total_ram_gb is not None:
+            overrides["total_ram_gb"] = args.total_ram_gb
+        if args.workspace:
+            overrides["workspace_root"] = args.workspace
+        if args.plans_dir:
+            overrides["plans_dir"] = args.plans_dir
+        if args.db_path:
+            overrides["db_path"] = args.db_path
+        if args.no_git:
+            overrides["git_enabled"] = False
+
+        if args.command == "configure-models":
+            raise SystemExit(_configure_models_interactive(cwd, cfg_path))
+
+        init_settings(
+            config_path=cfg_path,
+            cwd=cwd,
+            model_key_overrides=model_keys or None,
+            **overrides,
+        )
+
+        from local_ai_agent_orchestrator import runner
+
+        cmd = args.command or "run"
+
+        if cmd == "status":
+            runner.print_status(TaskQueue())
             return
-        else:
-            args.command = "run"
 
-    if args.command == "init":
-        _run_init(cwd, skip_readme=args.skip_readme, no_interactive=args.no_interactive)
-        return
+        if cmd == "health":
+            from local_ai_agent_orchestrator.model_manager import ModelManager
 
-    model_keys = {}
-    if args.planner_model:
-        model_keys["planner"] = args.planner_model
-    if args.coder_model:
-        model_keys["coder"] = args.coder_model
-    if args.reviewer_model:
-        model_keys["reviewer"] = args.reviewer_model
-    if args.embedder_model:
-        model_keys["embedder"] = args.embedder_model
+            runner.health_check(ModelManager())
+            return
 
-    overrides = {}
-    if args.lm_studio_base:
-        overrides["lm_studio_base"] = args.lm_studio_base
-    if args.total_ram_gb is not None:
-        overrides["total_ram_gb"] = args.total_ram_gb
-    if args.workspace:
-        overrides["workspace_root"] = args.workspace
-    if args.plans_dir:
-        overrides["plans_dir"] = args.plans_dir
-    if args.db_path:
-        overrides["db_path"] = args.db_path
-    if args.no_git:
-        overrides["git_enabled"] = False
+        if cmd == "reset-failed":
+            q = TaskQueue()
+            cur = q._conn.execute(
+                "UPDATE micro_tasks SET status='pending', attempt=0 WHERE status='failed'"
+            )
+            print(f"Reset {cur.rowcount} failed tasks to pending.")
+            return
 
-    if args.command == "configure-models":
-        raise SystemExit(_configure_models_interactive(cwd, cfg_path))
+        if cmd in (None, "run"):
+            use_tui = sys.stdout.isatty() and not args.plain
+            ok = runner.run_entry(
+                plan=args.plan,
+                single_run=args.single_run,
+                use_tui=use_tui,
+            )
+            if ok is False:
+                raise SystemExit(1)
+            return
 
-    init_settings(
-        config_path=cfg_path,
-        cwd=cwd,
-        model_key_overrides=model_keys or None,
-        **overrides,
-    )
-
-    from local_ai_agent_orchestrator import runner
-
-    cmd = args.command or "run"
-
-    if cmd == "status":
-        runner.print_status(TaskQueue())
-        return
-
-    if cmd == "health":
-        from local_ai_agent_orchestrator.model_manager import ModelManager
-
-        runner.health_check(ModelManager())
-        return
-
-    if cmd == "reset-failed":
-        q = TaskQueue()
-        cur = q._conn.execute(
-            "UPDATE micro_tasks SET status='pending', attempt=0 WHERE status='failed'"
-        )
-        print(f"Reset {cur.rowcount} failed tasks to pending.")
-        return
-
-    if cmd in (None, "run"):
-        use_tui = sys.stdout.isatty() and not args.plain
-        ok = runner.run_entry(
-            plan=args.plan,
-            single_run=args.single_run,
-            use_tui=use_tui,
-        )
-        if ok is False:
-            raise SystemExit(1)
-        return
-
-    parser.print_help()
+        parser.print_help()
+    except KeyboardInterrupt:
+        ui.print_goodbye(resume_command="lao run")
+        raise SystemExit(130)
 
 
 if __name__ == "__main__":

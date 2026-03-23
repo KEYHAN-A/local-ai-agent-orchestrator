@@ -89,13 +89,16 @@ def print_section(title: str) -> None:
 
 
 def ask_text(prompt: str, default: str | None = None) -> str:
-    if not is_tty():
-        suffix = f" [{default}]" if default else ""
-        raw = input(f"{prompt}{suffix}: ").strip()
-        return raw if raw else (default or "")
-    from rich.prompt import Prompt
+    try:
+        if not is_tty():
+            suffix = f" [{default}]" if default else ""
+            raw = input(f"{prompt}{suffix}: ").strip()
+            return raw if raw else (default or "")
+        from rich.prompt import Prompt
 
-    return Prompt.ask(prompt, default=default if default is not None else "")
+        return Prompt.ask(prompt, default=default if default is not None else "")
+    except KeyboardInterrupt:
+        raise
 
 
 def ask_float(prompt: str, default: float) -> float:
@@ -139,3 +142,13 @@ def ask_choice(prompt: str, options: Sequence[tuple[str, str]], default_key: str
         if picked in valid:
             return picked
         print_info(f"Choose one of: {', '.join(sorted(valid))}")
+
+
+def print_goodbye(*, resume_command: str = "lao run") -> None:
+    msg = (
+        "Goodbye from LAO.\n"
+        f"To continue later, run: {resume_command}\n"
+        "Need setup/model checks first? Run: lao\n"
+        "Website: https://lao.keyhan.info"
+    )
+    print_note(msg)

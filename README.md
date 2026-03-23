@@ -6,12 +6,12 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-KEYHAN--A%2Flocal--ai--agent--orchestrator-181717?logo=github)](https://github.com/KEYHAN-A/local-ai-agent-orchestrator)
-[![Website](https://img.shields.io/badge/Website-GitHub%20Pages-222?logo=github)](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
+[![Website](https://img.shields.io/badge/Website-lao.keyhan.info-222?logo=googlechrome)](https://lao.keyhan.info)
 
 | Resource | Link |
 |----------|------|
 | **PyPI package** | [https://pypi.org/project/local-ai-agent-orchestrator/](https://pypi.org/project/local-ai-agent-orchestrator/) |
-| **Project website** | [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/) |
+| **Project website** | [https://lao.keyhan.info](https://lao.keyhan.info) |
 | **Source code** | [https://github.com/KEYHAN-A/local-ai-agent-orchestrator](https://github.com/KEYHAN-A/local-ai-agent-orchestrator) |
 | **Issues & feature requests** | [https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues](https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues) |
 | **License** | [GPL-3.0-only](LICENSE) — [`LICENSE`](LICENSE) file in this repository |
@@ -134,7 +134,7 @@ flowchart LR
 
 ## Documentation
 
-- **Website (marketing & overview):** [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/) — built from [`docs/index.html`](docs/index.html) on the default branch ([`docs/.nojekyll`](docs/.nojekyll) for static assets).
+- **Website (marketing & overview):** [https://lao.keyhan.info](https://lao.keyhan.info) — built from [`docs/index.html`](docs/index.html) on the default branch ([`docs/.nojekyll`](docs/.nojekyll) for static assets).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, queue, model swapping, Git commit cadence
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — `factory.yaml`, paths, `git:` settings
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
@@ -171,7 +171,7 @@ cd local-ai-agent-orchestrator
 
 - **Layout (superseded in v1.2.0):** `lao init` created **`.lao/workspaces/`** + **`plans/`**; per-plan workspace was **`.lao/workspaces/<plan-stem>/`** (from `plans/Foo.md` → `Foo`).
 - **Plans:** Ignore **`plans/README.md`** when scanning for plans.
-- **Defaults:** Reviewer model default **mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit** (adjust `key` to match `lms ls`).
+- **Defaults:** Reviewer model default **deepseek-r1-distill-qwen-32b** (adjust `key` to match `lms ls`).
 - **Docs:** [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md); local token notes template **`PYPI_PUBLISH.local.md`** (gitignored).
 
 ### v1.1.0

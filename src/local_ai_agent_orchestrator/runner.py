@@ -215,6 +215,11 @@ def _print_final_status(queue: TaskQueue):
         log.info(f"  {status:12s}: {count}")
     log.info(f"  Total tokens: {tokens['prompt_tokens'] + tokens['completion_tokens']:,}")
     log.info(f"{'='*60}")
+    if _shutdown:
+        log.info("Goodbye from LAO.")
+        log.info("Continue this session later with: lao run")
+        log.info("Need setup/model checks first? Run: lao")
+        log.info("Website: https://lao.keyhan.info")
 
 
 def print_status(queue: TaskQueue):

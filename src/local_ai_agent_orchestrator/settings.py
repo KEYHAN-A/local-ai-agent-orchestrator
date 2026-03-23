@@ -47,12 +47,12 @@ def _default_models() -> dict[str, ModelConfig]:
             description="Coder model",
         ),
         "reviewer": ModelConfig(
-            key="mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
+            key="deepseek-r1-distill-qwen-32b",
             context_length=8192,
             max_completion=2048,
             supports_tools=False,
             size_bytes=18_500_000_000,
-            description="Reviewer (MLX 4-bit R1 distill)",
+            description="Reviewer (DeepSeek R1 Distill Qwen 32B)",
         ),
         "embedder": ModelConfig(
             key="text-embedding-nomic-embed-text-v1.5",
