@@ -14,6 +14,8 @@ factory.yaml
 factory.yml
 # Local PyPI / secrets notes (see docs/PYPI_PUBLISH.md for the public guide)
 PYPI_PUBLISH.local.md
+# Personal blog draft (local only)
+BLOG_LAO_PERSONAL.md
 # LAO runtime: DB, WAL, per-plan workspaces, caches — keep repo root clean
 .lao/
 state.db
