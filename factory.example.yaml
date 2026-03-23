@@ -1,23 +1,14 @@
-# Local AI Agent Orchestrator -- example configuration
-# Copy to factory.yaml in your project directory and adjust model keys (see `lao health`).
-
-lm_studio_base_url: "http://127.0.0.1:1234"
-openai_api_key: "lm-studio"
+lm_studio_base_url: http://127.0.0.1:1234
+openai_api_key: lm-studio
 total_ram_gb: 36
-
 paths:
-  # SQLite + WAL live under .lao/ (keeps project root clean).
-  database: ./.lao/state.db
   plans: ./plans
-  # Optional: legacy single workspace when no per-plan context (advanced).
-  # workspace: ./.lao/workspaces/_misc
-
+  database: ./.lao/state.db
 memory_gate:
   release_fraction: 0.75
   swap_growth_limit_mb: 512
   settle_timeout_s: 60
   poll_interval_s: 2
-
 orchestration:
   model_load_timeout_s: 180
   max_task_attempts: 3
@@ -25,30 +16,32 @@ orchestration:
   llm_request_timeout_s: 300
   llm_retry_attempts: 3
   llm_retry_backoff_base_s: 5
-
 models:
   planner:
-    key: "qwen_qwen3.5-35b-a3b"
-    # Large plans need high context; JSON task lists need a high max_completion.
+    key: qwen_qwen3.5-35b-a3b
     context_length: 32768
     max_completion: 16384
     supports_tools: true
     size_bytes: 21513639040
+    description: Architect / planner
   coder:
-    key: "qwen/qwen3-coder-30b"
+    key: qwen/qwen3-coder-30b
     context_length: 16384
     max_completion: 4096
     supports_tools: true
     size_bytes: 17190972664
+    description: Coder
   reviewer:
-    key: "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit"
+    key: mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit
     context_length: 8192
     max_completion: 2048
     supports_tools: false
     size_bytes: 18500000000
+    description: Reviewer (MLX 4-bit R1 distill)
   embedder:
-    key: "text-embedding-nomic-embed-text-v1.5"
+    key: text-embedding-nomic-embed-text-v1.5
     context_length: 2048
     max_completion: 0
     supports_tools: false
     size_bytes: 84106624
+    description: Embeddings for semantic search

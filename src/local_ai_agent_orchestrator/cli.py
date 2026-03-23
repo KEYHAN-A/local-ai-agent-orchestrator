@@ -133,6 +133,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Process queue once then exit",
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Classic scrolling log (no full-screen dashboard)",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
@@ -141,17 +146,45 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("status", help="Show task queue status")
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("reset-failed", help="Reset failed tasks to pending")
-    sub.add_parser("init", help="Write factory.example.yaml in current directory")
+    init_p = sub.add_parser("init", help="Scaffold factory.example.yaml, .lao/, plans/")
+    init_p.add_argument(
+        "--skip-readme",
+        action="store_true",
+        help="Do not create README.md if missing",
+    )
+    init_p.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help="Skip welcome banner (for scripts)",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "init":
+        from local_ai_agent_orchestrator.console_ui import write_workspace_readme
+
+        if sys.stdout.isatty() and not args.no_interactive:
+            from rich.console import Console
+            from rich.panel import Panel
+
+            from local_ai_agent_orchestrator.branding import DISPLAY as D
+
+            Console().print(
+                Panel.fit(
+                    "[bold]lao init[/] — Local AI Agent Orchestrator workspace",
+                    border_style=D["AI_SPARK"],
+                    style=f"on {D['BG']}",
+                )
+            )
+
         _write_example_config(cwd / "factory.example.yaml")
-        (cwd / ".lao" / "workspaces").mkdir(parents=True, exist_ok=True)
+        (cwd / ".lao").mkdir(parents=True, exist_ok=True)
         (cwd / "plans").mkdir(exist_ok=True)
-        print("Created .lao/workspaces/, plans/, and factory.example.yaml.")
+        if not args.skip_readme and write_workspace_readme(cwd):
+            print("Created README.md (workspace guide).")
+        print("Created .lao/, plans/, and factory.example.yaml.")
         print("Copy factory.example.yaml to factory.yaml and edit model keys (see `lms ls`).")
-        print("Each plan plans/Foo.md uses workspace .lao/workspaces/Foo/ — README.md in plans/ is ignored.")
+        print("Each plan plans/Foo.md → project folder ./Foo/ (next to plans/). plans/README.md is ignored.")
         return
 
     cfg_path = args.config
@@ -214,9 +247,11 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if cmd in (None, "run"):
+        use_tui = sys.stdout.isatty() and not args.plain
         runner.run_entry(
             plan=args.plan,
             single_run=args.single_run,
+            use_tui=use_tui,
         )
         return
 

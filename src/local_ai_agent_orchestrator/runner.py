@@ -21,10 +21,12 @@ from local_ai_agent_orchestrator.phases import (
     reviewer_phase,
 )
 from local_ai_agent_orchestrator.settings import get_settings
-from local_ai_agent_orchestrator.state import TaskQueue
+from local_ai_agent_orchestrator.state import ReservedPlanStemError, TaskQueue
 from local_ai_agent_orchestrator.tools import use_plan_workspace
 
 log = logging.getLogger(__name__)
+
+from local_ai_agent_orchestrator.console_ui import apply_runner_context
 
 _shutdown = False
 
@@ -52,6 +54,7 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
             log.info(f"{'='*60}")
             log.info(f"New plan: {plan_file.name}")
             log.info(f"{'='*60}")
+            apply_runner_context(phase="Architect", plan=plan_file.name, task="Decomposing plan")
             try:
                 architect_phase(mm, queue, plan_id, plan_text)
             except Exception as e:
@@ -80,6 +83,11 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 f"Coding task #{task.id}: {task.title} "
                 f"(attempt {task.attempt + 1}/{task.max_attempts})"
             )
+            apply_runner_context(
+                phase="Coder",
+                task=f"#{task.id} {task.title}",
+                attempt=f"{task.attempt + 1}/{task.max_attempts}",
+            )
 
             try:
                 with use_plan_workspace(queue, task.plan_id):
@@ -95,6 +103,11 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
 
             task = queue.get_task(task.id)
             if task and task.status == "coded":
+                apply_runner_context(
+                    phase="Reviewer",
+                    task=f"#{task.id} {task.title}",
+                    attempt=f"{task.attempt + 1}/{task.max_attempts}",
+                )
                 try:
                     with use_plan_workspace(queue, task.plan_id):
                         reviewer_phase(mm, queue, task)
@@ -109,6 +122,11 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
 
         task = queue.next_coded()
         if task:
+            apply_runner_context(
+                phase="Reviewer",
+                task=f"#{task.id} {task.title}",
+                attempt=f"{task.attempt + 1}/{task.max_attempts}",
+            )
             try:
                 with use_plan_workspace(queue, task.plan_id):
                     reviewer_phase(mm, queue, task)
@@ -143,7 +161,11 @@ def _scan_for_new_plans(queue: TaskQueue) -> list[tuple[Path, str, str]]:
         if queue.is_plan_registered(plan_text):
             continue
 
-        plan_id = queue.register_plan(plan_file.name, plan_text)
+        try:
+            plan_id = queue.register_plan(plan_file.name, plan_text)
+        except ReservedPlanStemError as e:
+            log.warning("%s", e)
+            continue
         new_plans.append((plan_file, plan_text, plan_id))
 
     return new_plans
@@ -167,9 +189,13 @@ def _print_idle_status(queue: TaskQueue):
     stats = queue.get_stats()
     if stats:
         parts = [f"{status}: {count}" for status, count in sorted(stats.items())]
-        log.info(f"Queue: {', '.join(parts)} | Watching {s.plans_dir}/ for new plans...")
+        msg = f"Queue: {', '.join(parts)} | Watching {s.plans_dir}/ for new plans..."
+        log.info(msg)
+        apply_runner_context(phase="Watching", idle_hint=msg, task="—")
     else:
-        log.info(f"No tasks. Drop a .md plan file into {s.plans_dir}/ to start.")
+        msg = f"No tasks. Drop a .md plan file into {s.plans_dir}/ to start."
+        log.info(msg)
+        apply_runner_context(phase="Watching", idle_hint=msg, task="—")
 
 
 def _print_final_status(queue: TaskQueue):
@@ -209,7 +235,7 @@ def print_status(queue: TaskQueue):
     print(f"\n  Paths:")
     print(f"    Config dir: {s.config_dir}")
     print(f"    Database:   {s.db_path}")
-    print(f"    Workspaces: {s.config_dir / '.lao' / 'workspaces'}/<plan-stem>/ (per plan)")
+    print(f"    Project dirs: {s.config_dir}/<plan-stem>/ (per plan, same stem as plans/*.md)")
     print(f"    Fallback:   {s.workspace_root}")
     print(f"    Plans:      {s.plans_dir}")
     print(f"{'='*60}\n")
@@ -267,57 +293,93 @@ def run_entry(
     *,
     plan: str | None = None,
     single_run: bool = False,
+    use_tui: bool = False,
 ):
     """Main entry after CLI parsed args and init_settings() ran."""
     setup_signals()
     s = get_settings()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
 
-    (s.config_dir / ".lao").mkdir(parents=True, exist_ok=True)
-    (s.config_dir / ".lao" / "workspaces").mkdir(parents=True, exist_ok=True)
-    s.workspace_root.mkdir(parents=True, exist_ok=True)
-    s.plans_dir.mkdir(parents=True, exist_ok=True)
+    dashboard = None
+    if use_tui:
+        from local_ai_agent_orchestrator import console_ui
 
-    queue = TaskQueue()
-    mm = ModelManager()
-
-    if not mm.health_check():
-        log.error("LM Studio server is not reachable at the configured endpoint.")
-        sys.exit(1)
-
-    missing = mm.verify_models_exist()
-    if missing:
-        log.error("Missing required models:")
-        for m in missing:
-            log.error(f"  {m}")
-        sys.exit(1)
-
-    if not mm.check_guardrails():
-        log.warning(
-            "LM Studio resource guardrails may block large models. "
-            "Developer tab > Server Settings > Model Loading Guardrails > Off."
+        dashboard = console_ui.RunDashboard()
+        dashboard.attach_logging()
+        dashboard.start()
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%H:%M:%S",
         )
 
-    if s.total_ram_gb:
-        log.info(f"Configured total RAM: {s.total_ram_gb} GB")
+    queue: TaskQueue | None = None
+    try:
+        (s.config_dir / ".lao").mkdir(parents=True, exist_ok=True)
+        s.workspace_root.mkdir(parents=True, exist_ok=True)
+        s.plans_dir.mkdir(parents=True, exist_ok=True)
 
-    log.info(f"{'='*60}")
-    log.info("  Local AI Agent Orchestrator")
-    log.info(f"  Models: {len(s.models)} configured")
-    log.info(f"  Per-plan workspaces: {s.config_dir / '.lao' / 'workspaces'}/<plan-stem>/")
-    log.info(f"  Plans: {s.plans_dir}")
-    log.info(f"  Database: {s.db_path}")
-    log.info(f"{'='*60}")
+        queue = TaskQueue()
+        if dashboard is not None:
+            dashboard.set_queue_getter(lambda: queue)
 
-    if plan:
-        plan_file, plan_text, plan_id = load_specific_plan(plan, queue)
-        log.info(f"Loaded plan: {plan_file.name}")
-        tasks = queue.get_plan_tasks(plan_id)
-        if not tasks:
-            architect_phase(mm, queue, plan_id, plan_text)
+        mm = ModelManager()
 
-    run_factory(mm, queue, single_run=single_run or bool(plan))
+        if not mm.health_check():
+            log.error("LM Studio server is not reachable at the configured endpoint.")
+            sys.exit(1)
+
+        missing = mm.verify_models_exist()
+        if missing:
+            log.error("Missing required models:")
+            for m in missing:
+                log.error(f"  {m}")
+            sys.exit(1)
+
+        if not mm.check_guardrails():
+            log.warning(
+                "LM Studio resource guardrails may block large models. "
+                "Developer tab > Server Settings > Model Loading Guardrails > Off."
+            )
+
+        if s.total_ram_gb:
+            log.info(f"Configured total RAM: {s.total_ram_gb} GB")
+
+        log.info(f"{'='*60}")
+        log.info("  Local AI Agent Orchestrator")
+        log.info(f"  Models: {len(s.models)} configured")
+        log.info(f"  Per-plan project dirs: {s.config_dir}/<plan-stem>/")
+        log.info(f"  Plans: {s.plans_dir}")
+        log.info(f"  Database: {s.db_path}")
+        log.info(f"{'='*60}")
+
+        if plan:
+            try:
+                plan_file, plan_text, plan_id = load_specific_plan(plan, queue)
+            except ReservedPlanStemError as e:
+                log.error("%s", e)
+                sys.exit(1)
+            log.info(f"Loaded plan: {plan_file.name}")
+            tasks = queue.get_plan_tasks(plan_id)
+            if not tasks:
+                apply_runner_context(
+                    phase="Architect",
+                    plan=plan_file.name,
+                    task="Decomposing plan",
+                )
+                architect_phase(mm, queue, plan_id, plan_text)
+
+        run_factory(mm, queue, single_run=single_run or bool(plan))
+    finally:
+        if dashboard is not None and queue is not None:
+            dashboard.print_run_summary(queue)
+        if dashboard is not None:
+            dashboard.stop()
+        if use_tui:
+            root = logging.getLogger()
+            root.handlers.clear()
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s [%(levelname)s] %(message)s",
+                datefmt="%H:%M:%S",
+            )

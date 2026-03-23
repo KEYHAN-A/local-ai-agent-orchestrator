@@ -13,7 +13,7 @@ Top-level keys:
 | `total_ram_gb` | Optional; logged at startup; reserved for future heuristics |
 | `paths.plans` | Incoming `.md` plans |
 | `paths.database` | SQLite path (recommended: `./.lao/state.db`) |
-| `paths.workspace` | Optional legacy fallback when no per-plan context is active (default: `.lao/workspaces/_misc`) |
+| `paths.workspace` | Optional fallback when no per-plan context is active (default: `.lao/_misc`) |
 | `memory_gate.*` | `release_fraction`, `swap_growth_limit_mb`, `settle_timeout_s`, `poll_interval_s` |
 | `orchestration.*` | Timeouts, retries, `max_task_attempts`, `plan_watch_interval_s` |
 | `models.<role>` | `key`, `context_length`, `max_completion`, `supports_tools`, `size_bytes`, `description` |
@@ -24,11 +24,11 @@ Roles: `planner`, `coder`, `reviewer`, `embedder`.
 
 **Reviewer (`models.reviewer`):** Reasoning models (e.g. DeepSeek-R1 distill) may emit *think*-tagged chain-of-thought before `APPROVED` or `REJECTED: …`. As of **v1.1.0**, the orchestrator strips those blocks and scans line-by-line for the verdict, so you only need a valid **`key`** and appropriate **`context_length`** / **`max_completion`** in YAML.
 
-### Per-plan workspaces (v1.1.1+)
+### Per-plan project folders (v1.2.0+)
 
-- Code for `plans/MyFeature.md` is written under **`<factory.yaml directory>/.lao/workspaces/MyFeature/`** (stem of the plan filename).
+- Code for `plans/MyFeature.md` is written under **`<factory.yaml directory>/MyFeature/`** (same stem as the plan filename, next to `plans/`).
 - **`README.md`** in `plans/` is **ignored** when scanning for new plans (so it is not decomposed as a project plan).
-- **`lao init`** creates **`.lao/workspaces/`** and **`plans/`** only — no top-level `workspace/` folder.
+- **`lao init`** creates **`.lao/`**, **`plans/`**, an optional root **`README.md`** (workspace guide), and **`factory.example.yaml`**.
 - SQLite and WAL files belong under **`.lao/`** when using the example `paths.database` — keeps stray `NANO*` / WAL files out of the repo root.
 
 ### Discovering model `key` values

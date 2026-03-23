@@ -35,7 +35,7 @@ def _workspace_root() -> Path:
 
 @contextmanager
 def use_plan_workspace(queue: "TaskQueue", plan_id: str) -> Iterator[Path]:
-    """Set the active workspace to this plan's `.lao/workspaces/<stem>/` for the block."""
+    """Set the active workspace to this plan's `<config_dir>/<stem>/` for the block."""
     path = queue.workspace_for_plan(plan_id)
     token = _ACTIVE_WORKSPACE.set(path)
     try:

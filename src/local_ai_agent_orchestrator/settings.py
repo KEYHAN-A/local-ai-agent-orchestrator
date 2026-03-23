@@ -72,7 +72,7 @@ class Settings:
     # Directory containing factory.yaml (or cwd if no config file).
     config_dir: Path = field(default_factory=Path.cwd)
     # Fallback when no per-plan workspace is active (rare); override via paths.workspace in YAML.
-    workspace_root: Path = field(default_factory=lambda: Path.cwd() / ".lao" / "workspaces" / "_misc")
+    workspace_root: Path = field(default_factory=lambda: Path.cwd() / ".lao" / "_misc")
     plans_dir: Path = field(default_factory=lambda: Path.cwd() / "plans")
     db_path: Path = field(default_factory=lambda: Path.cwd() / ".lao" / "state.db")
     total_ram_gb: Optional[float] = None
@@ -127,7 +127,7 @@ def init_settings(
 
     base = Settings(
         config_dir=config_dir,
-        workspace_root=config_dir / ".lao" / "workspaces" / "_misc",
+        workspace_root=config_dir / ".lao" / "_misc",
         plans_dir=config_dir / "plans",
         db_path=config_dir / ".lao" / "state.db",
     )

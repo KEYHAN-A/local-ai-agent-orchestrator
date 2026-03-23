@@ -1,5 +1,7 @@
 .venv/
 venv/
+# Local LAO scratch directory (not tests/ package tests)
+/test/
 __pycache__/
 *.py[cod]
 *.egg-info/

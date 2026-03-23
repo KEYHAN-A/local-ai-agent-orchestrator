@@ -18,6 +18,27 @@ from local_ai_agent_orchestrator.settings import get_settings
 
 log = logging.getLogger(__name__)
 
+# Plan filename stems that must not map to a root-level project folder.
+_RESERVED_PLAN_STEMS = frozenset(
+    {
+        "plans",
+        "factory",
+        "factory.example",
+        "readme",
+        ".lao",
+    }
+)
+
+
+def plan_stem_reserved(stem: str) -> bool:
+    s = stem.strip().lower()
+    return s in _RESERVED_PLAN_STEMS or s.startswith(".lao")
+
+
+class ReservedPlanStemError(ValueError):
+    """Raised when a plan file stem conflicts with layout or config names."""
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS plans (
     id TEXT PRIMARY KEY,
@@ -83,7 +104,7 @@ class TaskQueue:
 
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or get_settings().db_path
-        self._conn = sqlite3.connect(str(db_path), isolation_level=None)
+        self._conn = sqlite3.connect(str(self.db_path), isolation_level=None)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.row_factory = sqlite3.Row
@@ -95,6 +116,13 @@ class TaskQueue:
     # ── Plan Management ──────────────────────────────────────────────
 
     def register_plan(self, filename: str, content: str) -> str:
+        stem = Path(filename).stem
+        if plan_stem_reserved(stem):
+            raise ReservedPlanStemError(
+                f"Plan filename {filename!r} resolves to reserved stem {stem!r}. "
+                f"Rename the file so its stem is not one of: "
+                f"{', '.join(sorted(_RESERVED_PLAN_STEMS))}."
+            )
         plan_id = hashlib.sha256(content.encode()).hexdigest()[:16]
         try:
             self._conn.execute(
@@ -125,8 +153,8 @@ class TaskQueue:
 
     def workspace_for_plan(self, plan_id: str) -> Path:
         """
-        Per-plan workspace: <config_dir>/.lao/workspaces/<plan_stem>/
-        where plan_stem is the .md filename without extension.
+        Per-plan workspace: <config_dir>/<plan_stem>/
+        where plan_stem is the plan .md filename without extension.
         """
         row = self._conn.execute(
             "SELECT filename FROM plans WHERE id = ?", (plan_id,)
@@ -137,7 +165,7 @@ class TaskQueue:
             p.mkdir(parents=True, exist_ok=True)
             return p.resolve()
         stem = Path(row[0]).stem
-        root = (s.config_dir / ".lao" / "workspaces" / stem).resolve()
+        root = (s.config_dir / stem).resolve()
         root.mkdir(parents=True, exist_ok=True)
         return root
 

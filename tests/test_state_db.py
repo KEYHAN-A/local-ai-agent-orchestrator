@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Tests for per-plan workspaces and .lao layout."""
+"""SQLite path wiring for TaskQueue."""
 
 import tempfile
 import unittest
 from pathlib import Path
 
 from local_ai_agent_orchestrator.settings import init_settings, reset_settings_for_tests
-from local_ai_agent_orchestrator.state import TaskQueue
-from local_ai_agent_orchestrator.tools import _workspace_root, use_plan_workspace
+from local_ai_agent_orchestrator.state import ReservedPlanStemError, TaskQueue
 
 
 MINIMAL_YAML = """
@@ -19,11 +18,11 @@ paths:
 """
 
 
-class TestPerPlanWorkspace(unittest.TestCase):
+class TestTaskQueueDatabasePath(unittest.TestCase):
     def tearDown(self):
         reset_settings_for_tests()
 
-    def test_workspace_for_plan_stem(self):
+    def test_default_connects_to_settings_db_not_literal_none(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".lao").mkdir(parents=True, exist_ok=True)
@@ -33,25 +32,29 @@ class TestPerPlanWorkspace(unittest.TestCase):
 
             init_settings(config_path=cfg, cwd=root)
             q = TaskQueue()
-            pid = q.register_plan("IOS_DEV_PLAN.md", "hello plan body unique")
-            expected = (root / "IOS_DEV_PLAN").resolve()
-            self.assertEqual(q.workspace_for_plan(pid), expected)
-            self.assertTrue(expected.is_dir())
+            self.assertTrue(q.db_path.name.endswith(".db"))
+            self.assertTrue(q.db_path.exists())
+            stray = root / "None"
+            self.assertFalse(stray.exists())
+            q.close()
 
-    def test_use_plan_workspace_context(self):
+
+class TestReservedPlanStem(unittest.TestCase):
+    def tearDown(self):
+        reset_settings_for_tests()
+
+    def test_register_rejects_reserved_stem(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".lao").mkdir(parents=True, exist_ok=True)
             (root / "plans").mkdir(parents=True, exist_ok=True)
             cfg = root / "factory.yaml"
             cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
-
             init_settings(config_path=cfg, cwd=root)
             q = TaskQueue()
-            pid = q.register_plan("Foo.md", "other content")
-            path = q.workspace_for_plan(pid)
-            with use_plan_workspace(q, pid):
-                self.assertEqual(_workspace_root(), path)
+            with self.assertRaises(ReservedPlanStemError):
+                q.register_plan("plans.md", "x")
+            q.close()
 
 
 if __name__ == "__main__":

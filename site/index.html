@@ -7,12 +7,16 @@
   <title>Local AI Agent Orchestrator</title>
   <style>
     :root {
-      --bg: #0f1419;
-      --card: #1a2332;
-      --text: #e7ecf3;
-      --muted: #8b9cb3;
-      --accent: #3d8bfd;
-      --border: #2d3a4d;
+      --bg: #0F172A;
+      --card: #334155;
+      --card-elevated: #3F4D63;
+      --text: #E2E8F0;
+      --muted: #94A3B8;
+      --accent: #6366F1;
+      --accent-bright: #818CF8;
+      --success: #10B981;
+      --warning: #F97316;
+      --border: #3F4D63;
     }
     * { box-sizing: border-box; }
     body {
@@ -58,10 +62,10 @@
       background: var(--card);
       color: var(--text);
     }
-    .gh-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .gh-btn.primary { background: #238636; border-color: #2ea043; color: #fff; }
-    .gh-btn.primary:hover { background: #2ea043; color: #fff; }
-    h2 { font-size: 1.15rem; margin: 2rem 0 0.75rem; color: var(--accent); }
+    .gh-btn:hover { border-color: var(--accent-bright); color: var(--accent-bright); }
+    .gh-btn.primary { background: var(--success); border-color: #34D399; color: #fff; }
+    .gh-btn.primary:hover { background: #34D399; color: #fff; }
+    h2 { font-size: 1.15rem; margin: 2rem 0 0.75rem; color: var(--accent-bright); }
     ul { padding-left: 1.2rem; color: var(--muted); }
     ul strong { color: var(--text); }
     .grid {
@@ -140,7 +144,7 @@
       </div>
       <div class="card">
         <h3>Clean layout (v1.1.1)</h3>
-        <p>SQLite and generated code live under <code>.lao/</code>: <code>.lao/state.db</code> and <code>.lao/workspaces/&lt;plan-stem&gt;/</code> per <code>plans/*.md</code>. No root <code>workspace/</code> folder.</p>
+        <p>SQLite lives under <code>.lao/state.db</code>. Code for <code>plans/MyPlan.md</code> is written to <code>./MyPlan/</code> next to <code>plans/</code>. Internal fallback: <code>.lao/_misc/</code>.</p>
       </div>
     </div>
 

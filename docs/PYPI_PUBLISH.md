@@ -55,8 +55,17 @@ python -m twine upload dist/*
 
 ## After publishing
 
-- Bump `version` in `pyproject.toml` for every new release.
+- Bump `version` in `pyproject.toml` and `__version__` in `src/local_ai_agent_orchestrator/__init__.py` for every new release.
 - Users install with: `pip install local-ai-agent-orchestrator` (CLI: `lao`).
+
+## Release checklist (maintainers)
+
+1. Update README changelog, `docs/` (including `docs/index.html` for GitHub Pages), and `site/index.html` if the landing page should match `docs/`.
+2. Run tests: `python -m unittest discover -s tests -v`
+3. Build: `python -m build` then `python -m twine check dist/*`
+4. Commit and push `main` — Pages serves from the `docs/` folder on the default branch.
+5. Upload: `python -m twine upload dist/*` (see above for token auth).
+6. Optional: tag `git tag v1.x.x && git push origin v1.x.x`.
 
 ## GitHub Actions (optional)
 
