@@ -67,6 +67,22 @@ python -m twine upload dist/*
 5. Upload: `python -m twine upload dist/*` (see above for token auth).
 6. Optional: tag `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
-## GitHub Actions (optional)
+## GitHub Actions (recommended)
 
 Use [trusted publishing](https://docs.pypi.org/trusted-publishers/) so CI can upload without long-lived tokens on your machine.
+
+This repository includes `.github/workflows/publish-pypi.yml` that publishes on:
+
+- GitHub release `published`
+- tag push matching `v*` (for example `v2.1.0`)
+
+### Configure Trusted Publisher once
+
+1. In PyPI project settings, add a Trusted Publisher:
+   - Owner: `KEYHAN-A`
+   - Repository: `local-ai-agent-orchestrator`
+   - Workflow: `publish-pypi.yml`
+   - Environment: `pypi`
+2. In GitHub, create environment `pypi` (optional protections as desired).
+
+After this, creating a release or pushing a `v*` tag can publish automatically.

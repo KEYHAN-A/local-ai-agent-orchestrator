@@ -1,6 +1,6 @@
 # Local AI Agent Orchestrator
 
-**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.0.0**).
+**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.1.0**).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -148,6 +148,12 @@ cd local-ai-agent-orchestrator
 ```
 
 ## Changelog
+
+### v2.1.0
+
+- **Orchestration quality:** planner chunk-resume preflight, dependency-aware scheduling, role-batched coder/reviewer waves, and structured findings storage.
+- **Production gates:** validator framework for placeholder/schema/project-integrity checks, configurable quality gates, and per-plan `quality_report.json` traceability.
+- **Release automation:** GitHub Actions workflow added for automated PyPI publish on release/tag with Trusted Publishing support.
 
 ### v2.0.0
 

@@ -22,6 +22,7 @@ from local_ai_agent_orchestrator.phases import (
 )
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import ReservedPlanStemError, TaskQueue
+from local_ai_agent_orchestrator.reporting import write_quality_report
 from local_ai_agent_orchestrator.tools import use_plan_workspace
 
 log = logging.getLogger(__name__)
@@ -70,6 +71,12 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
                 continue
 
         processed = _process_queue(mm, queue)
+        if processed:
+            for p in queue.get_plans():
+                try:
+                    write_quality_report(queue, p["id"], mm.get_metrics())
+                except Exception as e:
+                    log.warning(f"Quality report generation failed for {p['filename']}: {e}")
 
         if not processed and not new_plans:
             if single_run:
@@ -81,11 +88,39 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
 
 
 def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
+    s = get_settings()
     processed = 0
 
     while not _shutdown:
-        task = queue.next_pending()
-        if task:
+        if not s.phase_gated:
+            task = queue.next_pending()
+            if task:
+                try:
+                    with use_plan_workspace(queue, task.plan_id):
+                        coder_phase(mm, queue, task)
+                    processed += 1
+                except Exception as e:
+                    log.error(f"Coder failed on task #{task.id}: {e}")
+                    if task.attempt + 1 >= task.max_attempts:
+                        queue.mark_failed(task.id, str(e))
+                    else:
+                        queue.mark_rework(task.id, f"Coder error: {e}")
+                task = queue.next_coded()
+                if task:
+                    try:
+                        with use_plan_workspace(queue, task.plan_id):
+                            reviewer_phase(mm, queue, task)
+                        processed += 1
+                    except Exception as e:
+                        log.error(f"Reviewer failed on task #{task.id}: {e}")
+                        if task.attempt + 1 >= task.max_attempts:
+                            queue.mark_failed(task.id, f"Reviewer error: {e}")
+                        else:
+                            queue.mark_rework(task.id, f"Reviewer error: {e}")
+                continue
+
+        batch = queue.next_pending_batch(limit=s.coder_batch_size)
+        for task in batch:
             log.info(f"{'─'*40}")
             log.info(
                 f"Coding task #{task.id}: {task.title} "
@@ -96,7 +131,6 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 task=f"#{task.id} {task.title}",
                 attempt=f"{task.attempt + 1}/{task.max_attempts}",
             )
-
             try:
                 with use_plan_workspace(queue, task.plan_id):
                     coder_phase(mm, queue, task)
@@ -107,29 +141,10 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                     queue.mark_failed(task.id, str(e))
                 else:
                     queue.mark_rework(task.id, f"Coder error: {e}")
-                continue
-
-            task = queue.get_task(task.id)
-            if task and task.status == "coded":
-                apply_runner_context(
-                    phase="Reviewer",
-                    task=f"#{task.id} {task.title}",
-                    attempt=f"{task.attempt + 1}/{task.max_attempts}",
-                )
-                try:
-                    with use_plan_workspace(queue, task.plan_id):
-                        reviewer_phase(mm, queue, task)
-                    processed += 1
-                except Exception as e:
-                    log.error(f"Reviewer failed on task #{task.id}: {e}")
-                    if task.attempt + 1 >= task.max_attempts:
-                        queue.mark_failed(task.id, f"Reviewer error: {e}")
-                    else:
-                        queue.mark_rework(task.id, f"Reviewer error: {e}")
-            continue
 
         task = queue.next_coded()
-        if task:
+        reviewed = 0
+        while task and reviewed < s.reviewer_batch_size:
             apply_runner_context(
                 phase="Reviewer",
                 task=f"#{task.id} {task.title}",
@@ -145,6 +160,9 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                     queue.mark_failed(task.id, f"Reviewer error: {e}")
                 else:
                     queue.mark_rework(task.id, f"Reviewer error: {e}")
+            reviewed += 1
+            task = queue.next_coded()
+        if reviewed:
             continue
 
         break

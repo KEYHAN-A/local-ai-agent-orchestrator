@@ -359,6 +359,7 @@ class RunDashboard:
         """Plain summary after Live exits (scrollback-friendly)."""
         stats = queue.get_stats()
         tokens = queue.get_total_tokens()
+        efficiency = queue.get_efficiency_metrics()
         tbl = Table(title="LAO run finished", border_style=D["PANEL_ELEVATED"])
         tbl.add_column("Metric", style=D["TEXT_MUTED"])
         tbl.add_column("Value", style=D["TEXT"])
@@ -368,6 +369,8 @@ class RunDashboard:
             "Tokens",
             f"{tokens['prompt_tokens'] + tokens['completion_tokens']:,}",
         )
+        tbl.add_row("Model switches", str(efficiency.get("model_switches", 0)))
+        tbl.add_row("Run events", str(efficiency.get("run_events", 0)))
         self._console.print()
         self._console.print(Panel(tbl, border_style=D["AI_SPARK"]))
 

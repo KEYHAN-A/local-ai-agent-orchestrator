@@ -95,6 +95,13 @@ class Settings:
     llm_request_timeout_s: int = 300
     llm_retry_attempts: int = 3
     llm_retry_backoff_base_s: int = 5
+    phase_gated: bool = True
+    coder_batch_size: int = 4
+    reviewer_batch_size: int = 6
+    max_context_utilization: float = 0.85
+    quality_gate_mode: str = "standard"
+    validation_build_cmd: Optional[str] = None
+    validation_lint_cmd: Optional[str] = None
 
     memory_release_fraction: float = 0.75
     swap_growth_limit_mb: float = 512.0
@@ -242,6 +249,23 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
             llm_retry_attempts=int(orch.get("llm_retry_attempts", base.llm_retry_attempts)),
             llm_retry_backoff_base_s=int(
                 orch.get("llm_retry_backoff_base_s", base.llm_retry_backoff_base_s)
+            ),
+            phase_gated=bool(orch.get("phase_gated", base.phase_gated)),
+            coder_batch_size=int(orch.get("coder_batch_size", base.coder_batch_size)),
+            reviewer_batch_size=int(orch.get("reviewer_batch_size", base.reviewer_batch_size)),
+            max_context_utilization=float(
+                orch.get("max_context_utilization", base.max_context_utilization)
+            ),
+            quality_gate_mode=str(orch.get("quality_gate_mode", base.quality_gate_mode)),
+            validation_build_cmd=(
+                str(orch["validation_build_cmd"])
+                if orch.get("validation_build_cmd") is not None
+                else base.validation_build_cmd
+            ),
+            validation_lint_cmd=(
+                str(orch["validation_lint_cmd"])
+                if orch.get("validation_lint_cmd") is not None
+                else base.validation_lint_cmd
             ),
         )
 

@@ -24,6 +24,7 @@ from openai import OpenAI
 from local_ai_agent_orchestrator.model_manager import ModelManager
 from local_ai_agent_orchestrator.prompts import (
     build_architect_messages,
+    build_architect_summary_messages,
     build_coder_messages,
     build_reviewer_messages,
 )
@@ -34,6 +35,11 @@ from local_ai_agent_orchestrator.tools import (
     TOOL_SCHEMAS,
     file_read,
     find_relevant_files,
+)
+from local_ai_agent_orchestrator.validators import (
+    extract_written_files,
+    validate_files,
+    validate_reviewer_json,
 )
 
 log = logging.getLogger(__name__)
@@ -109,8 +115,10 @@ def _architect_max_tokens(planner_cfg, messages: list[dict]) -> int:
     """
     prompt_est = _estimate_chat_prompt_tokens(messages)
     ctx = planner_cfg.context_length
+    utilization = get_settings().max_context_utilization
+    target_ctx = int(ctx * utilization)
     reserved = 256
-    headroom = ctx - prompt_est - reserved
+    headroom = target_ctx - prompt_est - reserved
     if headroom < 1024:
         raise ValueError(
             f"Plan is too large for the planner model context: context_length={ctx}, "
@@ -194,65 +202,79 @@ def architect_phase(
     model_key = mm.ensure_loaded("planner")
     client = _get_client()
 
-    messages = build_architect_messages(plan_text)
+    chunks = _chunk_plan_for_architect(plan_text, cfg.context_length)
+    for idx, chunk in enumerate(chunks):
+        queue.upsert_plan_chunk(plan_id, idx, chunk)
     start = time.time()
 
     log.info(f"[Architect] Decomposing plan {plan_id} ({len(plan_text)} chars)")
 
-    max_out = _architect_max_tokens(cfg, messages)
-
     try:
-        response = _llm_call(
-            client, model_key, messages,
-            max_tokens=max_out,
-            temperature=0.3,
-        )
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        finish_reason = getattr(choice, "finish_reason", None)
-        duration = time.time() - start
-        usage = response.usage
+        all_tasks: list[dict] = []
+        for idx, chunk in enumerate(chunks):
+            existing = queue.get_plan_chunks(plan_id)
+            row = next((c for c in existing if c["chunk_index"] == idx), None)
+            if row and row["status"] == "completed" and row.get("tasks"):
+                all_tasks.extend(row["tasks"])
+                continue
 
-        queue.log_run(
-            task_id=None, phase="architect", model_key=model_key,
-            prompt_tokens=usage.prompt_tokens if usage else 0,
-            completion_tokens=usage.completion_tokens if usage else 0,
-            duration_seconds=duration, success=True,
-        )
+            messages = build_architect_messages(chunk)
+            try:
+                max_out = _architect_max_tokens(cfg, messages)
+            except ValueError:
+                summary_messages = build_architect_summary_messages(chunk)
+                summary_response = _llm_call(
+                    client, model_key, summary_messages, max_tokens=1024, temperature=0.2
+                )
+                summary = summary_response.choices[0].message.content or chunk[:4000]
+                messages = build_architect_messages(summary)
+                max_out = _architect_max_tokens(cfg, messages)
 
-        try:
-            tasks = _parse_architect_output(content)
-        except ValueError as ve:
-            if finish_reason == "length":
-                raise ValueError(
-                    "Architect hit the output token limit (finish_reason=length). "
-                    "Increase models.planner.max_completion and models.planner.context_length "
-                    "in factory.yaml, or split the plan into smaller files so fewer micro-tasks "
-                    "are produced per run."
-                ) from ve
-            raise
-
-        if finish_reason == "length":
-            log.warning(
-                "[Architect] finish_reason=length — if the task list looks short, raise max_completion "
-                "or split the plan; JSON parsed but output may still be incomplete."
+            response = _llm_call(
+                client, model_key, messages, max_tokens=max_out, temperature=0.3
             )
+            choice = response.choices[0]
+            content = choice.message.content or ""
+            finish_reason = getattr(choice, "finish_reason", None)
+            usage = response.usage
+            queue.log_run(
+                task_id=None,
+                phase="architect",
+                model_key=model_key,
+                prompt_tokens=usage.prompt_tokens if usage else 0,
+                completion_tokens=usage.completion_tokens if usage else 0,
+                duration_seconds=0.0,
+                success=True,
+            )
+            try:
+                tasks = _parse_architect_output(content)
+            except ValueError as ve:
+                queue.mark_plan_chunk_failed(plan_id, idx, str(ve))
+                if finish_reason == "length":
+                    raise ValueError(
+                        "Architect hit output token limit. Increase planner context/max completion, "
+                        "or split plan further."
+                    ) from ve
+                raise
+            if not tasks:
+                queue.mark_plan_chunk_failed(plan_id, idx, "No tasks generated")
+                raise ValueError(f"Architect produced no tasks for chunk {idx}.")
+            queue.mark_plan_chunk_done(plan_id, idx, tasks)
+            all_tasks.extend(tasks)
 
-        if not tasks:
-            raise ValueError(f"Architect produced no tasks. Raw output:\n{content[:500]}")
-
-        queue.add_tasks(plan_id, tasks)
+        queue.add_tasks(plan_id, all_tasks)
         queue.mark_plan_active(plan_id)
 
-        log.info(f"[Architect] Created {len(tasks)} micro-tasks in {duration:.1f}s")
+        duration = time.time() - start
+        log.info(f"[Architect] Created {len(all_tasks)} micro-tasks in {duration:.1f}s")
         plan_git.commit_after_architect(
             queue.workspace_for_plan(plan_id),
             queue,
             plan_id,
             Path(plan_filename).stem,
-            len(tasks),
+            len(all_tasks),
         )
-        return tasks
+        return all_tasks
 
     except Exception as e:
         duration = time.time() - start
@@ -497,42 +519,24 @@ def _coder_no_tools(
     return content
 
 
-def _parse_reviewer_verdict(raw: str) -> tuple[bool, str]:
-    """
-    Parse APPROVED / REJECTED from reviewer output.
-    Strips chain-of-thought blocks, then scans lines so reasoning-first models still work.
-    Returns (approved, feedback_text).
-    """
-    text = _strip_thinking_blocks(raw)
-    if not text:
-        return False, (raw.strip() or "Empty reviewer response")
-
-    def _classify_line(line: str) -> str | None:
-        s = line.strip().strip("*").strip("`").strip()
-        if not s:
-            return None
-        u = s.upper()
-        if u.startswith("APPROVED"):
-            return "approved"
-        if u.startswith("REJECTED"):
-            return "rejected"
-        return None
-
-    for line in text.splitlines():
-        c = _classify_line(line)
-        if c == "approved":
-            return True, text
-        if c == "rejected":
-            return False, text
-
-    tail = text.rsplit("\n", 1)[-1]
-    c = _classify_line(tail)
-    if c == "approved":
-        return True, text
-    if c == "rejected":
-        return False, text
-
-    return False, text
+def _chunk_plan_for_architect(plan_text: str, context_length: int) -> list[str]:
+    # Conservative char-based chunking to avoid context failures.
+    max_chars = max(3000, int(context_length * 2.2))
+    if len(plan_text) <= max_chars:
+        return [plan_text]
+    sections = re.split(r"\n(?=#|\-\s|\d+\.)", plan_text)
+    chunks: list[str] = []
+    cur = ""
+    for s in sections:
+        if len(cur) + len(s) + 1 <= max_chars:
+            cur = f"{cur}\n{s}".strip()
+            continue
+        if cur:
+            chunks.append(cur)
+        cur = s
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 
 # ── Phase 3: Reviewer ────────────────────────────────────────────────
@@ -571,7 +575,27 @@ def reviewer_phase(
 
     # Also read the actual files written (if mentioned in coder output)
     code_to_review = task.coder_output
-    written_files = _extract_written_files(code_to_review)
+    written_files = extract_written_files(code_to_review)
+    queue.clear_findings(task.id)
+    validation_findings = validate_files(queue.workspace_for_plan(task.plan_id), written_files[:20])
+    if validation_findings:
+        for f in validation_findings:
+            queue.add_finding(
+                task.id,
+                source="validator",
+                severity=f.severity,
+                issue_class=f.issue_class,
+                message=f.message,
+                file_path=f.file_path,
+                fix_hint=f.fix_hint,
+            )
+        if get_settings().quality_gate_mode in ("standard", "strict"):
+            feedback = "\n".join(
+                f"- [{f.severity}] {f.issue_class}: {f.message}" for f in validation_findings
+            )
+            queue.mark_rework(task.id, f"Validation gate failed:\n{feedback}")
+            log.info(f"[Reviewer] Validation gate rejected task #{task.id}")
+            return False
     for path in written_files[:5]:
         content = file_read(path, max_lines=200)
         if not content.startswith("ERROR"):
@@ -599,7 +623,18 @@ def reviewer_phase(
             duration_seconds=duration, success=True,
         )
 
-        approved, feedback = _parse_reviewer_verdict(content)
+        approved, reviewer_findings, summary = validate_reviewer_json(_strip_thinking_blocks(content))
+        for f in reviewer_findings:
+            queue.add_finding(
+                task.id,
+                source="reviewer",
+                severity=f.severity,
+                issue_class=f.issue_class,
+                message=f.message,
+                file_path=f.file_path,
+                fix_hint=f.fix_hint,
+            )
+        feedback = summary or content
 
         ws = queue.workspace_for_plan(task.plan_id)
         if approved:
@@ -616,7 +651,11 @@ def reviewer_phase(
                     ws, task.plan_id, task.id, task.title, "failed"
                 )
             else:
-                queue.mark_rework(task.id, feedback)
+                structured = "\n".join(
+                    f"- [{f.severity}] {f.file_path or '-'} {f.issue_class}: {f.message}"
+                    for f in reviewer_findings
+                )
+                queue.mark_rework(task.id, structured or feedback)
                 log.info(f"[Reviewer] REJECTED task #{task.id}: {feedback[:100]}...")
                 plan_git.commit_after_reviewer(
                     ws, task.plan_id, task.id, task.title, "rejected"
@@ -633,9 +672,3 @@ def reviewer_phase(
         raise
 
 
-def _extract_written_files(coder_output: str) -> list[str]:
-    """Pull file paths from 'Files written: x, y, z' in coder output."""
-    match = re.search(r"Files written:\s*(.+)", coder_output)
-    if match:
-        return [f.strip() for f in match.group(1).split(",") if f.strip()]
-    return []

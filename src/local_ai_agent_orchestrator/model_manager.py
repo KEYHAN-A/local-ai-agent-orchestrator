@@ -29,6 +29,9 @@ class ModelManager:
         s = get_settings()
         self.base = (base_url or s.lm_studio_base).rstrip("/")
         self._current_llm: Optional[str] = None
+        self._swap_count = 0
+        self._load_count = 0
+        self._unload_count = 0
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -59,6 +62,7 @@ class ModelManager:
                 continue
             log.info(f"[ModelManager] Unloading: {instance_id}")
             self._unload(instance_id)
+            self._unload_count += 1
             # Sum up the size of everything we just evicted
             for role_cfg in get_settings().models.values():
                 if role_cfg.key in instance_id or instance_id in role_cfg.key:
@@ -75,6 +79,9 @@ class ModelManager:
         log.info(f"[ModelManager] Loading {role}: {cfg.key} (ctx={cfg.context_length})")
         self._load(cfg)
         self._wait_until_loaded(cfg.key)
+        self._load_count += 1
+        if loaded:
+            self._swap_count += 1
 
         self._current_llm = cfg.key
         return cfg.key
@@ -146,6 +153,13 @@ class ModelManager:
     @property
     def current_llm(self) -> Optional[str]:
         return self._current_llm
+
+    def get_metrics(self) -> dict[str, int]:
+        return {
+            "swap_count": self._swap_count,
+            "load_count": self._load_count,
+            "unload_count": self._unload_count,
+        }
 
     # ── Private Helpers ──────────────────────────────────────────────
 

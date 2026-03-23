@@ -77,9 +77,36 @@ CREATE TABLE IF NOT EXISTS run_log (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS plan_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id TEXT NOT NULL REFERENCES plans(id),
+    chunk_index INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    tasks_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(plan_id, chunk_index)
+);
+
+CREATE TABLE IF NOT EXISTS task_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES micro_tasks(id),
+    source TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    file_path TEXT,
+    issue_class TEXT NOT NULL,
+    message TEXT NOT NULL,
+    fix_hint TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON micro_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_plan ON micro_tasks(plan_id);
 CREATE INDEX IF NOT EXISTS idx_runlog_task ON run_log(task_id);
+CREATE INDEX IF NOT EXISTS idx_plan_chunks_plan ON plan_chunks(plan_id);
+CREATE INDEX IF NOT EXISTS idx_task_findings_task ON task_findings(task_id);
 """
 
 
@@ -151,6 +178,52 @@ class TaskQueue:
             "UPDATE plans SET status = 'completed' WHERE id = ?", (plan_id,)
         )
 
+    def upsert_plan_chunk(self, plan_id: str, chunk_index: int, chunk_text: str):
+        self._conn.execute(
+            """INSERT INTO plan_chunks (plan_id, chunk_index, chunk_text, status)
+               VALUES (?, ?, ?, 'pending')
+               ON CONFLICT(plan_id, chunk_index)
+               DO UPDATE SET chunk_text=excluded.chunk_text, updated_at=datetime('now')""",
+            (plan_id, chunk_index, chunk_text),
+        )
+
+    def mark_plan_chunk_done(
+        self, plan_id: str, chunk_index: int, tasks: list[dict]
+    ):
+        self._conn.execute(
+            """UPDATE plan_chunks
+               SET status='completed', tasks_json=?, error=NULL, updated_at=datetime('now')
+               WHERE plan_id=? AND chunk_index=?""",
+            (json.dumps(tasks), plan_id, chunk_index),
+        )
+
+    def mark_plan_chunk_failed(self, plan_id: str, chunk_index: int, error: str):
+        self._conn.execute(
+            """UPDATE plan_chunks
+               SET status='failed', error=?, updated_at=datetime('now')
+               WHERE plan_id=? AND chunk_index=?""",
+            (error, plan_id, chunk_index),
+        )
+
+    def get_plan_chunks(self, plan_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT chunk_index, chunk_text, status, tasks_json, error
+               FROM plan_chunks WHERE plan_id=? ORDER BY chunk_index ASC""",
+            (plan_id,),
+        ).fetchall()
+        out = []
+        for r in rows:
+            out.append(
+                {
+                    "chunk_index": r["chunk_index"],
+                    "chunk_text": r["chunk_text"],
+                    "status": r["status"],
+                    "tasks": json.loads(r["tasks_json"]) if r["tasks_json"] else None,
+                    "error": r["error"],
+                }
+            )
+        return out
+
     def workspace_for_plan(self, plan_id: str) -> Path:
         """
         Per-plan workspace: <config_dir>/<plan_stem>/
@@ -173,9 +246,19 @@ class TaskQueue:
 
     def add_tasks(self, plan_id: str, tasks: list[dict]):
         """Bulk-insert micro-tasks from the architect's output."""
+        title_set = {str(t.get("title", "")).strip() for t in tasks}
         self._conn.execute("BEGIN")
         try:
             for i, t in enumerate(tasks):
+                deps = [str(d).strip() for d in t.get("dependencies", []) if str(d).strip()]
+                cleaned_deps = [d for d in deps if d in title_set]
+                if len(cleaned_deps) != len(deps):
+                    dropped = set(deps) - set(cleaned_deps)
+                    log.warning(
+                        "[State] Task %r had unknown dependencies dropped: %s",
+                        t.get("title", "Untitled"),
+                        ", ".join(sorted(dropped)),
+                    )
                 self._conn.execute(
                     """INSERT INTO micro_tasks
                        (plan_id, title, description, file_paths, dependencies, priority)
@@ -185,7 +268,7 @@ class TaskQueue:
                         t["title"],
                         t["description"],
                         json.dumps(t.get("file_paths", [])),
-                        json.dumps(t.get("dependencies", [])),
+                        json.dumps(cleaned_deps),
                         i,
                     ),
                 )
@@ -197,15 +280,41 @@ class TaskQueue:
 
     def next_pending(self) -> Optional[MicroTask]:
         """Get the next task ready for coding (all dependencies satisfied)."""
-        row = self._conn.execute(
+        rows = self._conn.execute(
             """SELECT * FROM micro_tasks
                WHERE status = 'pending'
-               ORDER BY priority ASC, id ASC
-               LIMIT 1"""
-        ).fetchone()
-        if row is None:
+               ORDER BY priority ASC, id ASC"""
+        ).fetchall()
+        if not rows:
             return None
-        return self._row_to_task(row)
+        completed_cache: dict[str, set[str]] = {}
+        for row in rows:
+            plan_id = row["plan_id"]
+            if plan_id not in completed_cache:
+                completed_cache[plan_id] = {
+                    r["title"]
+                    for r in self._conn.execute(
+                        "SELECT title FROM micro_tasks WHERE plan_id=? AND status='completed'",
+                        (plan_id,),
+                    ).fetchall()
+                }
+            deps = json.loads(row["dependencies"])
+            if all(d in completed_cache[plan_id] for d in deps):
+                return self._row_to_task(row)
+        return None
+
+    def next_pending_batch(self, limit: int = 4) -> list[MicroTask]:
+        """Get a batch of runnable pending tasks with dependency checks."""
+        out: list[MicroTask] = []
+        while len(out) < max(1, limit):
+            task = self.next_pending()
+            if not task:
+                break
+            self.mark_coding(task.id)
+            out.append(task)
+        for t in out:
+            self._update_status(t.id, "pending")
+        return out
 
     def next_coded(self) -> Optional[MicroTask]:
         """Get the next task ready for review."""
@@ -313,6 +422,12 @@ class TaskQueue:
         ).fetchall()
         return [self._row_to_task(r) for r in rows]
 
+    def get_plans(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT id, filename, status, created_at FROM plans ORDER BY created_at ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     # ── Run Logging ──────────────────────────────────────────────────
 
     def log_run(
@@ -342,6 +457,50 @@ class TaskQueue:
                FROM run_log"""
         ).fetchone()
         return {"prompt_tokens": row["p"], "completion_tokens": row["c"]}
+
+    def get_efficiency_metrics(self) -> dict:
+        rows = self._conn.execute(
+            "SELECT model_key FROM run_log WHERE model_key IS NOT NULL ORDER BY id ASC"
+        ).fetchall()
+        switches = 0
+        prev = None
+        for r in rows:
+            cur = r["model_key"]
+            if prev is not None and cur != prev:
+                switches += 1
+            prev = cur
+        return {
+            "model_switches": switches,
+            "run_events": len(rows),
+        }
+
+    def add_finding(
+        self,
+        task_id: int,
+        source: str,
+        severity: str,
+        issue_class: str,
+        message: str,
+        file_path: Optional[str] = None,
+        fix_hint: Optional[str] = None,
+    ):
+        self._conn.execute(
+            """INSERT INTO task_findings
+               (task_id, source, severity, file_path, issue_class, message, fix_hint)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, source, severity, file_path, issue_class, message, fix_hint),
+        )
+
+    def clear_findings(self, task_id: int):
+        self._conn.execute("DELETE FROM task_findings WHERE task_id = ?", (task_id,))
+
+    def get_findings(self, task_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT source, severity, file_path, issue_class, message, fix_hint
+               FROM task_findings WHERE task_id = ? ORDER BY id ASC""",
+            (task_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # ── Helpers ──────────────────────────────────────────────────────
 

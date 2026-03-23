@@ -26,6 +26,10 @@ Rules:
 JSON schema for each task:
 {"title": "string", "description": "string", "file_paths": ["string"], "dependencies": ["string"]}"""
 
+ARCHITECT_SUMMARY_SYSTEM = """You are a software architect assistant.
+Compress the input plan section into concise implementation requirements.
+Output plain text bullets only. No markdown fences."""
+
 CODER_SYSTEM = """You are a senior software developer. Implement exactly what the task describes.
 
 Rules:
@@ -59,9 +63,9 @@ Check for:
 4. Style: Is the code clean and consistent?
 5. Security: Any obvious vulnerabilities?
 
-Respond with EXACTLY one of:
-- "APPROVED" if the code is production-ready.
-- "REJECTED: <specific, actionable feedback>" if changes are needed. Be precise about what to fix and where."""
+Respond with EXACTLY one JSON object:
+{"verdict":"APPROVED|REJECTED","findings":[{"severity":"critical|major|minor","file_path":"string","issue_class":"string","message":"string","fix_hint":"string"}],"summary":"string"}
+If approved, findings can be an empty array."""
 
 
 # ── Message Builders ─────────────────────────────────────────────────
@@ -72,6 +76,13 @@ def build_architect_messages(plan_text: str) -> list[dict]:
     return [
         {"role": "system", "content": ARCHITECT_SYSTEM},
         {"role": "user", "content": f"Decompose this project plan into micro-tasks:\n\n{plan_text}"},
+    ]
+
+
+def build_architect_summary_messages(section_text: str) -> list[dict]:
+    return [
+        {"role": "system", "content": ARCHITECT_SUMMARY_SYSTEM},
+        {"role": "user", "content": f"Summarize this plan section:\n\n{section_text}"},
     ]
 
 

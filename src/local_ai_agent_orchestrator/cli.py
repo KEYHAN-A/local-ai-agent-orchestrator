@@ -48,6 +48,13 @@ def _write_example_config(dest: Path) -> None:
             "llm_request_timeout_s": 300,
             "llm_retry_attempts": 3,
             "llm_retry_backoff_base_s": 5,
+            "phase_gated": True,
+            "coder_batch_size": 4,
+            "reviewer_batch_size": 6,
+            "max_context_utilization": 0.85,
+            "quality_gate_mode": "standard",
+            "validation_build_cmd": None,
+            "validation_lint_cmd": None,
         },
         "git": {
             "enabled": True,
@@ -144,6 +151,13 @@ def _build_config_from_inputs(
             "llm_request_timeout_s": 300,
             "llm_retry_attempts": 3,
             "llm_retry_backoff_base_s": 5,
+            "phase_gated": True,
+            "coder_batch_size": 4,
+            "reviewer_batch_size": 6,
+            "max_context_utilization": 0.85,
+            "quality_gate_mode": "standard",
+            "validation_build_cmd": None,
+            "validation_lint_cmd": None,
         },
         "git": {
             "enabled": True,
@@ -467,6 +481,21 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Disable per-plan Git snapshots and phase commits (overrides factory.yaml)",
     )
+    parser.add_argument("--phase-gated", action="store_true", help="Enable role-batched phase execution")
+    parser.add_argument("--batch-size", type=int, default=None, help="Coder batch size per wave")
+    parser.add_argument(
+        "--max-context-utilization",
+        type=float,
+        default=None,
+        help="Planner target context utilization ratio (0-1)",
+    )
+    parser.add_argument(
+        "--quality-gate",
+        type=str,
+        default=None,
+        choices=["strict", "standard", "off"],
+        help="Quality gate strictness",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
@@ -534,6 +563,14 @@ def main(argv: list[str] | None = None) -> None:
             overrides["db_path"] = args.db_path
         if args.no_git:
             overrides["git_enabled"] = False
+        if args.phase_gated:
+            overrides["phase_gated"] = True
+        if args.batch_size is not None:
+            overrides["coder_batch_size"] = args.batch_size
+        if args.max_context_utilization is not None:
+            overrides["max_context_utilization"] = args.max_context_utilization
+        if args.quality_gate is not None:
+            overrides["quality_gate_mode"] = args.quality_gate
 
         if args.command == "configure-models":
             raise SystemExit(_configure_models_interactive(cwd, cfg_path))
