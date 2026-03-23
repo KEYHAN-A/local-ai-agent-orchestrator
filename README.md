@@ -150,6 +150,11 @@ cd local-ai-agent-orchestrator
 
 ## Changelog
 
+### v2.2.1
+
+- **Reviewer parsing robustness:** reviewer JSON validation now accepts markdown-fenced JSON and mixed-text wrappers, preventing false task rejection when verdict payloads are wrapped in ```json blocks.
+- **Regression coverage:** added validator tests for fenced reviewer responses so `APPROVED` verdicts are correctly recognized.
+
 ### v2.2.0
 
 - **Pipeline completion correctness:** plans now move to `completed` when all tasks reach a terminal state (`completed` or `failed`) instead of staying `active`.

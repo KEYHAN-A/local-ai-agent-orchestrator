@@ -57,6 +57,14 @@ class TestValidators(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(summary, "Optional improvements")
 
+    def test_validate_reviewer_json_markdown_fenced_object_is_parsed(self):
+        approved, findings, summary = validate_reviewer_json(
+            '```json\n{"verdict":"APPROVED","findings":[{"severity":"minor","file_path":"x.py","issue_class":"style","message":"nit","fix_hint":"optional"}],"summary":"Looks good"}\n```'
+        )
+        self.assertTrue(approved)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(summary, "Looks good")
+
     def test_cross_file_consistency_flags_missing_symbol(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

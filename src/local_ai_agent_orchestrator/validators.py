@@ -110,10 +110,29 @@ def _pbxproj_findings(path: str, text: str) -> list[Finding]:
 
 
 def validate_reviewer_json(text: str) -> tuple[bool, list[Finding], str]:
-    try:
-        data = json.loads(text)
-    except Exception:
-        return False, [], text.strip() or "Reviewer output was not valid JSON."
+    raw = (text or "").strip()
+    candidates = [raw]
+    if "```" in raw:
+        fence_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw, flags=re.IGNORECASE)
+        candidates.extend(block.strip() for block in fence_blocks if block.strip())
+    if "{" in raw and "}" in raw:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if end > start:
+            candidates.append(raw[start : end + 1].strip())
+
+    data = None
+    for cand in candidates:
+        try:
+            parsed = json.loads(cand)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            data = parsed
+            break
+
+    if not isinstance(data, dict):
+        return False, [], raw or "Reviewer output was not valid JSON."
 
     verdict = str(data.get("verdict", "")).upper()
     summary = str(data.get("summary", "")).strip()
