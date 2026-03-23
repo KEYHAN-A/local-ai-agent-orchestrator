@@ -49,6 +49,14 @@ class TestValidators(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(summary, "Needs changes")
 
+    def test_validate_reviewer_json_rejected_with_only_minor_is_non_blocking(self):
+        approved, findings, summary = validate_reviewer_json(
+            '{"verdict":"REJECTED","findings":[{"severity":"minor","file_path":"x.py","issue_class":"style","message":"nit","fix_hint":"optional"}],"summary":"Optional improvements"}'
+        )
+        self.assertTrue(approved)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(summary, "Optional improvements")
+
     def test_cross_file_consistency_flags_missing_symbol(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

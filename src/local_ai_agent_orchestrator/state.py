@@ -178,6 +178,17 @@ class TaskQueue:
             "UPDATE plans SET status = 'completed' WHERE id = ?", (plan_id,)
         )
 
+    def is_plan_terminal(self, plan_id: str) -> bool:
+        """
+        A plan is terminal when all its tasks are either completed or failed.
+        """
+        row = self._conn.execute(
+            """SELECT COUNT(*) as c FROM micro_tasks
+               WHERE plan_id = ? AND status NOT IN ('completed', 'failed')""",
+            (plan_id,),
+        ).fetchone()
+        return bool(row) and int(row["c"]) == 0
+
     def upsert_plan_chunk(self, plan_id: str, chunk_index: int, chunk_text: str):
         self._conn.execute(
             """INSERT INTO plan_chunks (plan_id, chunk_index, chunk_text, status)
@@ -280,28 +291,58 @@ class TaskQueue:
 
     def next_pending(self) -> Optional[MicroTask]:
         """Get the next task ready for coding (all dependencies satisfied)."""
-        rows = self._conn.execute(
-            """SELECT * FROM micro_tasks
-               WHERE status = 'pending'
-               ORDER BY priority ASC, id ASC"""
-        ).fetchall()
-        if not rows:
-            return None
-        completed_cache: dict[str, set[str]] = {}
-        for row in rows:
-            plan_id = row["plan_id"]
-            if plan_id not in completed_cache:
-                completed_cache[plan_id] = {
-                    r["title"]
-                    for r in self._conn.execute(
-                        "SELECT title FROM micro_tasks WHERE plan_id=? AND status='completed'",
-                        (plan_id,),
-                    ).fetchall()
-                }
-            deps = json.loads(row["dependencies"])
-            if all(d in completed_cache[plan_id] for d in deps):
-                return self._row_to_task(row)
-        return None
+        while True:
+            rows = self._conn.execute(
+                """SELECT * FROM micro_tasks
+                   WHERE status = 'pending'
+                   ORDER BY priority ASC, id ASC"""
+            ).fetchall()
+            if not rows:
+                return None
+
+            completed_cache: dict[str, set[str]] = {}
+            failed_cache: dict[str, set[str]] = {}
+            progressed = False
+
+            for row in rows:
+                plan_id = row["plan_id"]
+                if plan_id not in completed_cache:
+                    completed_cache[plan_id] = {
+                        r["title"]
+                        for r in self._conn.execute(
+                            "SELECT title FROM micro_tasks WHERE plan_id=? AND status='completed'",
+                            (plan_id,),
+                        ).fetchall()
+                    }
+                if plan_id not in failed_cache:
+                    failed_cache[plan_id] = {
+                        r["title"]
+                        for r in self._conn.execute(
+                            "SELECT title FROM micro_tasks WHERE plan_id=? AND status='failed'",
+                            (plan_id,),
+                        ).fetchall()
+                    }
+
+                deps = json.loads(row["dependencies"])
+                failed_deps = [d for d in deps if d in failed_cache[plan_id]]
+                if failed_deps:
+                    self.mark_failed(
+                        row["id"],
+                        "Blocked by failed dependencies: " + ", ".join(sorted(failed_deps)),
+                    )
+                    log.warning(
+                        "[State] Task #%s auto-failed due to failed dependencies: %s",
+                        row["id"],
+                        ", ".join(sorted(failed_deps)),
+                    )
+                    progressed = True
+                    continue
+
+                if all(d in completed_cache[plan_id] for d in deps):
+                    return self._row_to_task(row)
+
+            if not progressed:
+                return None
 
     def next_pending_batch(self, limit: int = 4) -> list[MicroTask]:
         """Get a batch of runnable pending tasks with dependency checks."""
@@ -421,6 +462,22 @@ class TaskQueue:
             (plan_id,),
         ).fetchall()
         return [self._row_to_task(r) for r in rows]
+
+    def reset_failed_tasks(self, plan_id: Optional[str] = None) -> int:
+        if plan_id:
+            cur = self._conn.execute(
+                """UPDATE micro_tasks
+                   SET status='pending', attempt=0, reviewer_feedback=NULL, updated_at=datetime('now')
+                   WHERE status='failed' AND plan_id=?""",
+                (plan_id,),
+            )
+        else:
+            cur = self._conn.execute(
+                """UPDATE micro_tasks
+                   SET status='pending', attempt=0, reviewer_feedback=NULL, updated_at=datetime('now')
+                   WHERE status='failed'"""
+            )
+        return int(cur.rowcount or 0)
 
     def get_plans(self) -> list[dict]:
         rows = self._conn.execute(

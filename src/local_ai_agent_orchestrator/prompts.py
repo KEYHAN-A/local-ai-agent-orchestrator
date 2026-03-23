@@ -63,6 +63,11 @@ Check for:
 4. Style: Is the code clean and consistent?
 5. Security: Any obvious vulnerabilities?
 
+Severity policy:
+- Mark as critical/major only for true blockers (incorrect behavior, compile/runtime failure, missing required functionality, security vulnerabilities).
+- Mark as minor for non-blocking concerns (style preferences, optional optimizations, refactor suggestions).
+- Reject only when at least one blocker exists.
+
 Respond with EXACTLY one JSON object:
 {"verdict":"APPROVED|REJECTED","findings":[{"severity":"critical|major|minor","file_path":"string","issue_class":"string","message":"string","fix_hint":"string"}],"summary":"string"}
 If approved, findings can be an empty array."""

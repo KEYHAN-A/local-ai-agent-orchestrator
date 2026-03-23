@@ -71,6 +71,7 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
                 continue
 
         processed = _process_queue(mm, queue)
+        _mark_terminal_plans_completed(queue)
         if processed:
             for p in queue.get_plans():
                 try:
@@ -238,6 +239,14 @@ def _print_final_status(queue: TaskQueue):
         log.info("Continue this session later with: lao run")
         log.info("Need setup/model checks first? Run: lao")
         log.info("Website: https://lao.keyhan.info")
+
+
+def _mark_terminal_plans_completed(queue: TaskQueue):
+    for p in queue.get_plans():
+        if p.get("status") == "completed":
+            continue
+        if queue.is_plan_terminal(p["id"]):
+            queue.mark_plan_completed(p["id"])
 
 
 def print_status(queue: TaskQueue):

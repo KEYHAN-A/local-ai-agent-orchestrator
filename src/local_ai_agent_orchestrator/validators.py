@@ -128,7 +128,10 @@ def validate_reviewer_json(text: str) -> tuple[bool, list[Finding], str]:
                 fix_hint=item.get("fix_hint"),
             )
         )
-    return verdict == "APPROVED", findings, summary
+    blocking_severities = {"critical", "major", "blocker"}
+    has_blocker = any((f.severity or "").lower() in blocking_severities for f in findings)
+    approved = verdict == "APPROVED" or (verdict == "REJECTED" and not has_blocker)
+    return approved, findings, summary
 
 
 def validate_cross_file_consistency(workspace: Path, plan_langs: set[str]) -> list[Finding]:

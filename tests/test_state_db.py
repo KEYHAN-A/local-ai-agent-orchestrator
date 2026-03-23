@@ -57,5 +57,37 @@ class TestReservedPlanStem(unittest.TestCase):
             q.close()
 
 
+class TestTaskQueueStateHelpers(unittest.TestCase):
+    def tearDown(self):
+        reset_settings_for_tests()
+
+    def test_reset_failed_tasks_and_terminal_detection(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("Plan.md", "x")
+            q.add_tasks(
+                pid,
+                [
+                    {"title": "A", "description": "a", "file_paths": [], "dependencies": []},
+                    {"title": "B", "description": "b", "file_paths": [], "dependencies": []},
+                ],
+            )
+            tasks = q.get_plan_tasks(pid)
+            q.mark_completed(tasks[0].id)
+            q.mark_failed(tasks[1].id, "failed for test")
+            self.assertTrue(q.is_plan_terminal(pid))
+
+            reset_count = q.reset_failed_tasks(plan_id=pid)
+            self.assertEqual(reset_count, 1)
+            self.assertFalse(q.is_plan_terminal(pid))
+            q.close()
+
+
 if __name__ == "__main__":
     unittest.main()

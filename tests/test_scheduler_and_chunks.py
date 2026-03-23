@@ -70,6 +70,35 @@ class TestSchedulerAndChunks(unittest.TestCase):
             self.assertEqual(chunks[0]["tasks"][0]["title"], "T")
             q.close()
 
+    def test_next_pending_auto_fails_blocked_dependencies(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("Plan.md", "x")
+            q.add_tasks(
+                pid,
+                [
+                    {"title": "A", "description": "a", "file_paths": [], "dependencies": []},
+                    {"title": "B", "description": "b", "file_paths": [], "dependencies": ["A"]},
+                ],
+            )
+            first = q.next_pending()
+            self.assertIsNotNone(first)
+            self.assertEqual(first.title, "A")
+            q.mark_failed(first.id, "boom")
+            none_left = q.next_pending()
+            self.assertIsNone(none_left)
+            tasks = q.get_plan_tasks(pid)
+            by_title = {t.title: t for t in tasks}
+            self.assertEqual(by_title["B"].status, "failed")
+            self.assertIn("Blocked by failed dependencies", by_title["B"].reviewer_feedback or "")
+            q.close()
+
 
 if __name__ == "__main__":
     unittest.main()

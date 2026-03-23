@@ -503,7 +503,8 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("status", help="Show task queue status")
     sub.add_parser("health", help="Check LM Studio and models")
-    sub.add_parser("reset-failed", help="Reset failed tasks to pending")
+    sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
+    sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
     sub.add_parser("configure-models", help="Interactively update model keys in factory.yaml")
     init_p = sub.add_parser("init", help="Scaffold factory.example.yaml, .lao/, plans/")
     init_p.add_argument(
@@ -596,12 +597,10 @@ def main(argv: list[str] | None = None) -> None:
             runner.health_check(ModelManager())
             return
 
-        if cmd == "reset-failed":
+        if cmd in ("retry-failed", "reset-failed"):
             q = TaskQueue()
-            cur = q._conn.execute(
-                "UPDATE micro_tasks SET status='pending', attempt=0 WHERE status='failed'"
-            )
-            print(f"Reset {cur.rowcount} failed tasks to pending.")
+            reset_count = q.reset_failed_tasks()
+            print(f"Reset {reset_count} failed tasks to pending.")
             return
 
         if cmd in (None, "run"):

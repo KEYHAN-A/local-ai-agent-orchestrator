@@ -1,6 +1,6 @@
 # Local AI Agent Orchestrator
 
-**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.1.1**).
+**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.2.0**).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -88,7 +88,8 @@ lao --plan plans/my_project.md --single-run run
 | `lao status` | SQLite queue + token stats |
 | `lao health` | LM Studio reachability + model keys |
 | `lao configure-models` | Interactive remap of planner/coder/reviewer/embedder model keys |
-| `lao reset-failed` | Move `failed` tasks back to `pending` |
+| `lao retry-failed` | Retry failed tasks by moving `failed` tasks back to `pending` |
+| `lao reset-failed` | Deprecated alias for `lao retry-failed` |
 | `lao init` | Interactive onboarding: writes `factory.yaml` (+ `factory.example.yaml`), `.lao/`, `plans/`, optional `README.md` |
 
 On TTY terminals, `lao`, `lao init`, `lao configure-models`, and `lao run` use a unified Rich-based visual style (branded panels, status tables, guided choices) for one seamless operator flow.
@@ -148,6 +149,14 @@ cd local-ai-agent-orchestrator
 ```
 
 ## Changelog
+
+### v2.2.0
+
+- **Pipeline completion correctness:** plans now move to `completed` when all tasks reach a terminal state (`completed` or `failed`) instead of staying `active`.
+- **Recovery ergonomics:** added `lao retry-failed` (with `reset-failed` alias) backed by queue API support to quickly re-run failed tasks.
+- **Scheduler robustness:** pending tasks that depend on failed prerequisites are now auto-failed with explicit dependency-block feedback.
+- **Reviewer quality gate tuning:** reviewer guidance and parsing now treat minor-only feedback as non-blocking, reducing over-rejection loops on local models.
+- **Test coverage:** added tests for terminal-plan detection, failed-task reset, failed-dependency scheduling behavior, and reviewer minor-finding approval behavior.
 
 ### v2.1.1
 
