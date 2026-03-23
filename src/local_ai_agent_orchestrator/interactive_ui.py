@@ -1,0 +1,141 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""
+Shared interactive Rich UI primitives for LAO CLI flows.
+"""
+
+from __future__ import annotations
+
+import sys
+from typing import Sequence
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
+from local_ai_agent_orchestrator.branding import DISPLAY as D
+
+_console = Console(force_terminal=True)
+
+
+def is_tty() -> bool:
+    return sys.stdout.isatty()
+
+
+def print_header(title: str, subtitle: str | None = None) -> None:
+    if not is_tty():
+        print(title)
+        if subtitle:
+            print(subtitle)
+        return
+    text = Text()
+    text.append(" LAO ", style=f"bold {D['AI_SPARK_BRIGHT']}")
+    text.append(title, style=f"bold {D['TEXT']}")
+    if subtitle:
+        text.append(f"\n{subtitle}", style=D["TEXT_MUTED"])
+    _console.print(
+        Panel.fit(
+            text,
+            border_style=D["AI_SPARK"],
+            style=f"on {D['BG']}",
+            padding=(1, 2),
+        )
+    )
+
+
+def print_status_table(title: str, rows: Sequence[tuple[str, str]]) -> None:
+    if not is_tty():
+        print(title)
+        for k, v in rows:
+            print(f"- {k}: {v}")
+        return
+    tbl = Table(title=title, border_style=D["PANEL_ELEVATED"])
+    tbl.add_column("Item", style=D["TEXT_MUTED"])
+    tbl.add_column("Status", style=D["TEXT"])
+    for k, v in rows:
+        tbl.add_row(k, v)
+    _console.print(tbl)
+
+
+def print_info(message: str) -> None:
+    if not is_tty():
+        print(message)
+        return
+    _console.print(Text(message, style=D["TEXT"]))
+
+
+def print_note(message: str) -> None:
+    if not is_tty():
+        print(message)
+        return
+    _console.print(
+        Panel(
+            Text(message, style=D["TEXT"]),
+            border_style=D["PANEL_ELEVATED"],
+            style=f"on {D['BG']}",
+            padding=(0, 1),
+        )
+    )
+
+
+def print_section(title: str) -> None:
+    if not is_tty():
+        print(f"\n{title}")
+        return
+    t = Text()
+    t.append("• ", style=D["AI_SPARK"])
+    t.append(title, style=f"bold {D['TEXT']}")
+    _console.print(t)
+
+
+def ask_text(prompt: str, default: str | None = None) -> str:
+    if not is_tty():
+        suffix = f" [{default}]" if default else ""
+        raw = input(f"{prompt}{suffix}: ").strip()
+        return raw if raw else (default or "")
+    from rich.prompt import Prompt
+
+    return Prompt.ask(prompt, default=default if default is not None else "")
+
+
+def ask_float(prompt: str, default: float) -> float:
+    while True:
+        raw = ask_text(prompt, str(default))
+        try:
+            return float(raw)
+        except ValueError:
+            print_info("Please enter a valid number.")
+
+
+def ask_yes_no(prompt: str, default: bool = True) -> bool:
+    d = "y" if default else "n"
+    while True:
+        ans = ask_text(f"{prompt} (y/n)", d).strip().lower()
+        if ans in ("y", "yes"):
+            return True
+        if ans in ("n", "no"):
+            return False
+        print_info("Please answer y or n.")
+
+
+def ask_choice(prompt: str, options: Sequence[tuple[str, str]], default_key: str) -> str:
+    if is_tty():
+        tbl = Table(title=prompt, border_style=D["PANEL_ELEVATED"])
+        tbl.add_column("Key", style=D["AI_SPARK_BRIGHT"], width=6)
+        tbl.add_column("Action", style=D["TEXT"])
+        for key, label in options:
+            marker = " (default)" if key == default_key else ""
+            tbl.add_row(key, f"{label}{marker}")
+        _console.print(tbl)
+    else:
+        print(prompt)
+        for key, label in options:
+            marker = " (default)" if key == default_key else ""
+            print(f"  {key}) {label}{marker}")
+
+    valid = {k for k, _ in options}
+    while True:
+        picked = ask_text("Select", default_key).strip()
+        if picked in valid:
+            return picked
+        print_info(f"Choose one of: {', '.join(sorted(valid))}")

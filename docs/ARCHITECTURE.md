@@ -4,7 +4,8 @@
 
 | Module | Role |
 |--------|------|
-| `cli.py` | Argument parsing, `factory.yaml` loading, `init_settings()` |
+| `cli.py` | Command routing, interactive flows (`lao`, `init`, `configure-models`), settings bootstrap |
+| `interactive_ui.py` | Shared Rich primitives for headers, status tables, prompts, and guided menus |
 | `console_ui.py` | Optional Rich full-screen run dashboard (`lao run` on a TTY) |
 | `settings.py` | Runtime configuration (YAML + env + CLI) |
 | `runner.py` | Main loop: plan ingestion, task dispatch, signals |
@@ -17,11 +18,20 @@
 
 ## Execution flow
 
-1. **Plans:** New `.md` files under `plans/` (or `--plan`) are hashed; new content gets a `plan_id` and architect run.
+1. **Operator entry:** `lao` presents environment readiness and guides next action (`init`, `health`, `configure-models`, `run`).
+2. **Plans:** New `.md` files under `plans/` (or `--plan`) are hashed; new content gets a `plan_id` and architect run.
 2. **Architect:** Single chat completion; output parsed as JSON array of micro-tasks; inserted into SQLite.
 3. **Coder:** For each pending task, load coder model, optional embedding retrieval, tool loop until final message. File tools run inside **`use_plan_workspace`**: **`<config_dir>/<plan-stem>/`** derived from the plan’s `.md` filename.
 4. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then any line starting with `APPROVED` / `REJECTED` is used for the verdict; state transitions.
 5. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
+
+## Resume semantics
+
+- Task state is persisted in SQLite (`micro_tasks`, `plans`, `run_log`) with WAL mode.
+- On restart, `recover_interrupted()` moves transient states back to resumable states:
+  - `coding` -> `pending`
+  - `review` -> `coded`
+- Plan deduplication is content-hash based: submitting unchanged plan text does not create a second decomposition path.
 
 ## Git commits (v1.3.0+)
 

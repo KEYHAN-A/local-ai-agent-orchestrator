@@ -9,9 +9,11 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
+from local_ai_agent_orchestrator import interactive_ui as ui
 from local_ai_agent_orchestrator.settings import init_settings
 from local_ai_agent_orchestrator.state import TaskQueue
 
@@ -93,6 +95,318 @@ def _write_example_config(dest: Path) -> None:
     print(f"Wrote example configuration: {dest}")
 
 
+def _default_model_profiles() -> dict[str, dict[str, str]]:
+    return {
+        "small": {
+            "planner": "qwen2.5-7b-instruct",
+            "coder": "qwen2.5-coder-7b-instruct",
+            "reviewer": "qwen2.5-7b-instruct",
+            "embedder": "text-embedding-nomic-embed-text-v1.5",
+        },
+        "medium": {
+            "planner": "qwen_qwen3.5-35b-a3b",
+            "coder": "qwen/qwen3-coder-30b",
+            "reviewer": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
+            "embedder": "text-embedding-nomic-embed-text-v1.5",
+        },
+        "large": {
+            "planner": "qwen_qwen3.5-35b-a3b",
+            "coder": "qwen/qwen3-coder-30b",
+            "reviewer": "deepseek/deepseek-r1",
+            "embedder": "text-embedding-nomic-embed-text-v1.5",
+        },
+    }
+
+
+def _build_config_from_inputs(
+    lm_studio_base_url: str,
+    total_ram_gb: float,
+    model_keys: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "lm_studio_base_url": lm_studio_base_url,
+        "openai_api_key": "lm-studio",
+        "total_ram_gb": total_ram_gb,
+        "paths": {
+            "plans": "./plans",
+            "database": "./.lao/state.db",
+        },
+        "memory_gate": {
+            "release_fraction": 0.75,
+            "swap_growth_limit_mb": 512,
+            "settle_timeout_s": 60,
+            "poll_interval_s": 2,
+        },
+        "orchestration": {
+            "model_load_timeout_s": 180,
+            "max_task_attempts": 3,
+            "plan_watch_interval_s": 10,
+            "llm_request_timeout_s": 300,
+            "llm_retry_attempts": 3,
+            "llm_retry_backoff_base_s": 5,
+        },
+        "git": {
+            "enabled": True,
+            "plan_file_name": "LAO_PLAN.md",
+            "commit_trailers": False,
+        },
+        "models": {
+            "planner": {
+                "key": model_keys["planner"],
+                "context_length": 32768,
+                "max_completion": 16384,
+                "supports_tools": True,
+                "size_bytes": 21513639040,
+                "description": "Architect / planner",
+            },
+            "coder": {
+                "key": model_keys["coder"],
+                "context_length": 16384,
+                "max_completion": 4096,
+                "supports_tools": True,
+                "size_bytes": 17190972664,
+                "description": "Coder",
+            },
+            "reviewer": {
+                "key": model_keys["reviewer"],
+                "context_length": 8192,
+                "max_completion": 2048,
+                "supports_tools": False,
+                "size_bytes": 18500000000,
+                "description": "Reviewer",
+            },
+            "embedder": {
+                "key": model_keys["embedder"],
+                "context_length": 2048,
+                "max_completion": 0,
+                "supports_tools": False,
+                "size_bytes": 84106624,
+                "description": "Embeddings for semantic search",
+            },
+        },
+    }
+
+
+def _resolve_config_path(cwd: Path, cli_config: Path | None) -> Path | None:
+    cfg_path = cli_config or _default_config_path(cwd)
+    env_config = os.getenv("LAO_CONFIG") or os.getenv("FACTORY_CONFIG")
+    if env_config and Path(env_config).is_file():
+        cfg_path = Path(env_config)
+    return cfg_path
+
+
+def _write_yaml(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
+    from local_ai_agent_orchestrator.console_ui import write_workspace_readme
+
+    interactive = ui.is_tty() and not no_interactive
+    if interactive:
+        ui.print_header(
+            "Interactive Workspace Setup",
+            "Create config, verify model strategy, and bootstrap your first plan.",
+        )
+        ui.print_info("This setup takes about 1-2 minutes.")
+
+    _write_example_config(cwd / "factory.example.yaml")
+    (cwd / ".lao").mkdir(parents=True, exist_ok=True)
+    (cwd / "plans").mkdir(exist_ok=True)
+    if not skip_readme and write_workspace_readme(cwd):
+        ui.print_info("Created README.md (workspace guide).")
+
+    if not interactive:
+        print("Created .lao/, plans/, and factory.example.yaml.")
+        print("Copy factory.example.yaml to factory.yaml and edit model keys (see `lms ls`).")
+        return
+
+    ui.print_section("Step 1/5 — Model Role Guide")
+    ui.print_status_table(
+        "Roles",
+        [
+            ("planner", "Decompose large plans into micro-tasks"),
+            ("coder", "Implement tasks and edit files"),
+            ("reviewer", "Approve/reject with quality checks"),
+            ("embedder", "Power semantic file retrieval"),
+        ],
+    )
+
+    ui.print_section("Step 2/5 — Environment")
+    lm_url = ui.ask_text("LM Studio URL", "http://127.0.0.1:1234")
+    ram_gb = ui.ask_float("Total RAM/VRAM (GB)", 36.0)
+    tier = "small" if ram_gb < 24 else "medium" if ram_gb < 64 else "large"
+
+    profiles = _default_model_profiles()
+    picked = dict(profiles[tier])
+    ui.print_section("Step 3/5 — Model Profile")
+    ui.print_note(f"Suggested profile for {ram_gb:.0f} GB: {tier}")
+    if not ui.ask_yes_no("Use suggested model keys?", True):
+        ui.print_section("Step 4/5 — Manual Model Keys")
+        ui.print_info("Enter LM Studio model keys (`lms ls` can list keys).")
+        for role in ("planner", "coder", "reviewer", "embedder"):
+            picked[role] = ui.ask_text(f"{role} model", picked[role])
+
+    config = _build_config_from_inputs(
+        lm_studio_base_url=lm_url,
+        total_ram_gb=ram_gb,
+        model_keys=picked,
+    )
+    ui.print_section("Step 5/5 — Final Review")
+    ui.print_info("Confirming values before writing `factory.yaml`.")
+    ui.print_status_table(
+        "Setup Summary",
+        [
+            ("LM Studio URL", lm_url),
+            ("Capacity Tier", tier),
+            ("Planner", picked["planner"]),
+            ("Coder", picked["coder"]),
+            ("Reviewer", picked["reviewer"]),
+            ("Embedder", picked["embedder"]),
+        ],
+    )
+    _write_yaml(cwd / "factory.yaml", config)
+    ui.print_info("Wrote factory.yaml.")
+
+    if ui.ask_yes_no("Create a starter plan now?", True):
+        title = ui.ask_text("Plan filename (without .md)", "InitialSetup")
+        prompt = ui.ask_text("One-line goal", "Set up project skeleton and first feature")
+        plan_path = cwd / "plans" / f"{title}.md"
+        if not plan_path.exists():
+            plan_path.write_text(
+                f"# {title}\n\n## Goal\n{prompt}\n\n## Notes\n- Expand this plan before running.\n",
+                encoding="utf-8",
+            )
+            ui.print_info(f"Created starter plan: {plan_path}")
+        else:
+            ui.print_info(f"Plan already exists: {plan_path}")
+
+    ui.print_note("Workspace is ready.")
+    _post_action_prompt(cwd, cwd / "factory.yaml", default="health")
+
+
+def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
+    cfg = cfg_path or (cwd / "factory.yaml")
+    if not cfg.is_file():
+        print("No factory.yaml found. Run `lao init` first.")
+        return 1
+
+    with open(cfg, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    data.setdefault("models", {})
+
+    init_settings(config_path=cfg, cwd=cwd)
+    from local_ai_agent_orchestrator.model_manager import ModelManager
+
+    mm = ModelManager()
+    if not mm.health_check():
+        ui.print_note("LM Studio is unreachable. Start server and run again.")
+        return 1
+
+    available = mm.get_available_models()
+    ui.print_header("Configure Models", "Update role-to-model mappings from available LM Studio models.")
+    ui.print_status_table(
+        f"Available Models ({len(available)})",
+        [(str(i + 1), m) for i, m in enumerate(available)],
+    )
+
+    ui.print_section("Role Mapping")
+    ui.print_info("Press Enter to keep a role unchanged.")
+    changed: list[str] = []
+    for role in ("planner", "coder", "reviewer", "embedder"):
+        role_cfg = (data.get("models") or {}).get(role) or {}
+        cur = role_cfg.get("key", "")
+        new_key = ui.ask_text(f"{role} model key", cur)
+        if new_key:
+            role_cfg["key"] = new_key
+        if new_key and new_key != cur:
+            changed.append(role)
+        data["models"][role] = role_cfg
+
+    _write_yaml(cfg, data)
+    ui.print_note(f"Updated model mappings in {cfg}.")
+    ui.print_status_table(
+        "Roles Updated",
+        [(r, "changed") for r in changed] or [("none", "no changes")],
+    )
+    _post_action_prompt(cwd, cfg, default="run")
+    return 0
+
+
+def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
+    ui.print_header("Interactive Home", "Environment status and guided next actions.")
+    cfg = cfg_path or (cwd / "factory.yaml")
+    has_config = cfg.is_file()
+
+    lm_ok = False
+    missing: list[str] = []
+    plans_count = len(list((cwd / "plans").glob("*.md"))) if (cwd / "plans").exists() else 0
+
+    if has_config:
+        init_settings(config_path=cfg, cwd=cwd)
+        from local_ai_agent_orchestrator.model_manager import ModelManager
+
+        mm = ModelManager()
+        lm_ok = mm.health_check()
+        if lm_ok:
+            missing = mm.verify_models_exist()
+    else:
+        pass
+
+    ui.print_status_table(
+        "Environment",
+        [
+            ("Config", f"{'OK' if has_config else 'MISSING'} ({cfg})"),
+            ("LM Studio", "OK" if lm_ok else ("UNREACHABLE" if has_config else "skipped (no config)")),
+            ("Models", "OK" if (has_config and lm_ok and not missing) else (f"MISSING {len(missing)}" if missing else "skipped")),
+            ("Plans", f"{plans_count} file(s) in ./plans"),
+        ],
+    )
+    if missing:
+        ui.print_note("Configured models missing from LM Studio:")
+        for m in missing:
+            ui.print_info(f"- {m}")
+        ui.print_info("Tip: choose 'configure model names' to remap quickly.")
+
+    choice = ui.ask_choice(
+        "Choose Action",
+        [
+            ("1", "init workspace"),
+            ("2", "run orchestrator"),
+            ("3", "health check"),
+            ("4", "configure model names"),
+            ("5", "quit"),
+        ],
+        "1" if not has_config else "2",
+    )
+    return int(choice) if choice.isdigit() else 5
+
+
+def _post_action_prompt(cwd: Path, config_path: Path, default: str = "run") -> None:
+    choice = ui.ask_choice(
+        "Next Action",
+        [
+            ("health", "Run `lao health` now"),
+            ("run", "Run `lao run` now"),
+            ("exit", "Exit"),
+        ],
+        default,
+    )
+    if choice == "health":
+        init_settings(config_path=config_path, cwd=cwd)
+        from local_ai_agent_orchestrator import runner
+        from local_ai_agent_orchestrator.model_manager import ModelManager
+
+        runner.health_check(ModelManager())
+    elif choice == "run":
+        init_settings(config_path=config_path, cwd=cwd)
+        from local_ai_agent_orchestrator import runner
+
+        runner.run_entry(plan=None, single_run=False, use_tui=ui.is_tty())
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = argv if argv is not None else sys.argv[1:]
     cwd = Path.cwd()
@@ -151,11 +465,12 @@ def main(argv: list[str] | None = None) -> None:
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
-    sub.add_parser("run", help="Run orchestrator (default if no subcommand)")
+    sub.add_parser("run", help="Run orchestrator")
 
     sub.add_parser("status", help="Show task queue status")
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("reset-failed", help="Reset failed tasks to pending")
+    sub.add_parser("configure-models", help="Interactively update model keys in factory.yaml")
     init_p = sub.add_parser("init", help="Scaffold factory.example.yaml, .lao/, plans/")
     init_p.add_argument(
         "--skip-readme",
@@ -170,40 +485,25 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
+    cfg_path = _resolve_config_path(cwd, args.config)
+
+    if args.command is None and sys.stdout.isatty():
+        action = _home_menu(cwd, cfg_path)
+        if action == 1:
+            _run_init(cwd, skip_readme=False, no_interactive=False)
+            return
+        if action == 3:
+            args.command = "health"
+        elif action == 4:
+            args.command = "configure-models"
+        elif action == 5:
+            return
+        else:
+            args.command = "run"
+
     if args.command == "init":
-        from local_ai_agent_orchestrator.console_ui import write_workspace_readme
-
-        if sys.stdout.isatty() and not args.no_interactive:
-            from rich.console import Console
-            from rich.panel import Panel
-
-            from local_ai_agent_orchestrator.branding import DISPLAY as D
-
-            Console().print(
-                Panel.fit(
-                    "[bold]lao init[/] — Local AI Agent Orchestrator workspace",
-                    border_style=D["AI_SPARK"],
-                    style=f"on {D['BG']}",
-                )
-            )
-
-        _write_example_config(cwd / "factory.example.yaml")
-        (cwd / ".lao").mkdir(parents=True, exist_ok=True)
-        (cwd / "plans").mkdir(exist_ok=True)
-        if not args.skip_readme and write_workspace_readme(cwd):
-            print("Created README.md (workspace guide).")
-        print("Created .lao/, plans/, and factory.example.yaml.")
-        print("Copy factory.example.yaml to factory.yaml and edit model keys (see `lms ls`).")
-        print("Each plan plans/Foo.md → project folder ./Foo/ (next to plans/). plans/README.md is ignored.")
+        _run_init(cwd, skip_readme=args.skip_readme, no_interactive=args.no_interactive)
         return
-
-    cfg_path = args.config
-    if cfg_path is None:
-        cfg_path = _default_config_path(cwd)
-
-    env_config = os.getenv("LAO_CONFIG") or os.getenv("FACTORY_CONFIG")
-    if env_config and Path(env_config).is_file():
-        cfg_path = Path(env_config)
 
     model_keys = {}
     if args.planner_model:
@@ -228,6 +528,9 @@ def main(argv: list[str] | None = None) -> None:
         overrides["db_path"] = args.db_path
     if args.no_git:
         overrides["git_enabled"] = False
+
+    if args.command == "configure-models":
+        raise SystemExit(_configure_models_interactive(cwd, cfg_path))
 
     init_settings(
         config_path=cfg_path,
@@ -260,11 +563,13 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd in (None, "run"):
         use_tui = sys.stdout.isatty() and not args.plain
-        runner.run_entry(
+        ok = runner.run_entry(
             plan=args.plan,
             single_run=args.single_run,
             use_tui=use_tui,
         )
+        if ok is False:
+            raise SystemExit(1)
         return
 
     parser.print_help()

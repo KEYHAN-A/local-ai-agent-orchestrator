@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Local AI Agent Orchestrator (LAO) — run a 24/7 planner, coder, and reviewer pipeline on your hardware with LM Studio, SQLite, memory-safe model swaps, and Git traceability. GPL-3.0." />
+  <meta name="description" content="Local AI Agent Orchestrator (LAO) — unified interactive local coding pipeline with planner, coder, reviewer, resume-aware queue recovery, and per-plan Git traceability." />
   <title>Local AI Agent Orchestrator · Local LLM coding factory</title>
   <style>
     :root {
@@ -286,19 +286,19 @@
     <div class="hero-mesh" aria-hidden="true"></div>
     <div class="hero-inner">
       <p class="eyebrow"><span></span> Local-first · LM Studio · Your silicon</p>
-      <h1>Run a coding agent factory on your own hardware, around the clock</h1>
+      <h1>Run a local coding agent factory with a seamless operator flow</h1>
       <p class="hero-lead">
-        <strong>Local AI Agent Orchestrator (LAO)</strong> turns markdown plans into shipped code using a
-        <strong>planner → coder → reviewer</strong> loop—no cloud API required at runtime. Swap heavy models safely,
-        keep state in <strong>SQLite</strong>, and let your Mac or workstation put <strong>local LLMs</strong> to work
-        while you sleep.
+        <strong>Local AI Agent Orchestrator (LAO)</strong> turns markdown plans into shipped code with a
+        <strong>planner → coder → reviewer</strong> loop and a unified UX across
+        <code>lao</code>, <code>lao init</code>, <code>lao configure-models</code>, and <code>lao run</code>.
+        Keep state in <strong>SQLite</strong>, recover smoothly after interruptions, and keep progress traceable with optional per-plan Git.
       </p>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View on GitHub</a>
         <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install from PyPI</a>
       </div>
       <div class="meta-badges">
-        <span>v1.3.0</span>
+        <span>v2.0.0</span>
         <span>GPL-3.0-only</span>
         <span>OpenAI SDK → LM Studio</span>
         <span>CLI: <code style="font-size: inherit;">lao</code></span>
@@ -332,31 +332,32 @@
         <p>Per-plan repos get <code>LAO_PLAN.md</code>, <code>LAO_TASKS.json</code>, and commits named <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable and easy to revert.</p>
       </article>
       <article class="card">
-        <h3>Operator-friendly CLI</h3>
-        <p><code>factory.yaml</code> plus flags for URLs, RAM, models, and paths. Rich dashboard on a TTY, or <code>--plain</code> for logs in CI.</p>
+        <span class="tag">New in v2.0</span>
+        <h3>Unified interactive CLI</h3>
+        <p>Home/status, guided init, model remap, and run dashboard now share one coherent TTY experience with guided next actions.</p>
       </article>
     </div>
   </section>
 
   <section id="flow" aria-labelledby="flow-h">
     <p class="section-title" id="flow-h">Flow</p>
-    <h2>From markdown to merged changes</h2>
+    <h2>From setup to resumed execution</h2>
     <div class="steps">
       <div class="step">
-        <h3>Drop a plan</h3>
-        <p>Add <code>plans/Feature.md</code>. LAO hashes content and opens a matching project folder next to <code>plans/</code>.</p>
+        <h3>Open home</h3>
+        <p>Run <code>lao</code> to see environment readiness and jump into init, model setup, health, or execution.</p>
       </div>
       <div class="step">
-        <h3>Decompose</h3>
-        <p>The planner model emits a JSON task list; tasks land in SQLite with dependencies and priorities.</p>
+        <h3>Guided setup</h3>
+        <p><code>lao init</code> creates <code>factory.yaml</code> interactively and can bootstrap an initial plan in one flow.</p>
       </div>
       <div class="step">
-        <h3>Code &amp; review</h3>
-        <p>The coder model uses file tools inside the plan workspace; the reviewer model verdicts APPROVED or REJECTED with feedback loops.</p>
+        <h3>Run pipeline</h3>
+        <p><code>lao run</code> executes planner/coder/reviewer with a Rich dashboard and per-plan workspace mapping.</p>
       </div>
       <div class="step">
-        <h3>Ship &amp; rewind</h3>
-        <p>Optional Git commits after each phase; roll back a single agent step or replay history with standard Git tools.</p>
+        <h3>Pause and continue</h3>
+        <p>Queue state persists in SQLite. Restarting <code>lao run</code> recovers interrupted tasks and continues work.</p>
       </div>
     </div>
   </section>
@@ -365,12 +366,12 @@
     <p class="section-title" id="install-h">Quick start</p>
     <h2>Install and run in minutes</h2>
     <pre><code>pip install local-ai-agent-orchestrator
-lao init &amp;&amp; cp factory.example.yaml factory.yaml
-# Edit factory.yaml — point lm_studio_base_url and model keys (`lms ls`)
+lao
+# choose "init workspace" and follow guided setup
 lao health
 lao run</code></pre>
     <p style="margin-top:1rem;color:var(--muted);font-size:0.92rem;">
-      From source: clone the repo, <code>pip install -e .</code>, same commands. Use <code>lao --plan plans/YourPlan.md --single-run run</code> for one-shot runs.
+      Existing project workflow: clone/open your repo into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code> so LAO works directly in that codebase folder.
     </p>
   </section>
 

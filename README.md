@@ -1,6 +1,6 @@
 # Local AI Agent Orchestrator
 
-**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional **per-plan Git** commits (**v1.3.0**), and a Rich terminal dashboard (**v1.2.0**).
+**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.0.0**).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -25,6 +25,8 @@ Install: `pip install local-ai-agent-orchestrator` (CLI: **`lao`**). Upgrade: `p
 - **Reviewer:** validates output (APPROVED / REJECTED with feedback); **v1.1.0+** parses verdicts after stripping reasoning / *think*-block prefixes (R1-style models).
 - **Embedder:** optional semantic file retrieval before coding (Nomic via LM Studio).
 - **Git (v1.3.0+):** optional commits in each plan’s project folder (`LAO_PLAN.md`, `LAO_TASKS.json`, `LAO_REVIEW.log`, `lao(architect|coder|reviewer): …` messages). See [Git traceability](#git-traceability) below.
+- **Unified CLI UX (v2.0.0+):** one polished flow from home/status (`lao`) to onboarding (`lao init`) to recovery (`lao configure-models`) and execution (`lao run`).
+- **Resume by default:** interrupted `coding`/`review` tasks recover on restart; same plan content is deduplicated instead of re-decomposed.
 
 ## Why not CrewAI / LangChain here?
 
@@ -64,10 +66,10 @@ Package index: [https://pypi.org/project/local-ai-agent-orchestrator/](https://p
 ## Quick start
 
 ```bash
-# Generate example config
+# Open interactive LAO home assistant
+lao
+# or run setup directly:
 lao init
-cp factory.example.yaml factory.yaml
-# Edit factory.yaml: set lm_studio_base_url, total_ram_gb, and model keys from `lms ls`
 
 lao health
 lao run
@@ -79,13 +81,17 @@ lao --plan plans/my_project.md --single-run run
 
 | Command | Description |
 |--------|-------------|
-| `lao run` | Watch `plans/`, process queue (default if no subcommand) |
+| `lao run` | Watch `plans/`, process queue |
+| `lao` | Interactive home assistant: environment status + guided next actions |
 | `lao --plan FILE run` | Ingest one plan and process |
 | `lao --single-run run` | One pass then exit |
 | `lao status` | SQLite queue + token stats |
 | `lao health` | LM Studio reachability + model keys |
+| `lao configure-models` | Interactive remap of planner/coder/reviewer/embedder model keys |
 | `lao reset-failed` | Move `failed` tasks back to `pending` |
-| `lao init` | Write `factory.example.yaml`, `.lao/`, `plans/`, optional `README.md` |
+| `lao init` | Interactive onboarding: writes `factory.yaml` (+ `factory.example.yaml`), `.lao/`, `plans/`, optional `README.md` |
+
+On TTY terminals, `lao`, `lao init`, `lao configure-models`, and `lao run` use a unified Rich-based visual style (branded panels, status tables, guided choices) for one seamless operator flow.
 
 ### Global flags
 
@@ -103,7 +109,9 @@ Environment: `LM_STUDIO_BASE_URL`, `OPENAI_API_KEY`, `LAO_CONFIG` (path to yaml)
 
 ### Project layout (v1.2.0+)
 
-After `lao init` and copying `factory.yaml`, code for **`plans/MyPlan.md`** is written under **`./MyPlan/`** (same folder name as the plan stem, next to `plans/`). The database defaults to **`.lao/state.db`**. **`plans/README.md`** is never treated as a plan. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+After `lao init`, code for **`plans/MyPlan.md`** is written under **`./MyPlan/`** (same folder name as the plan stem, next to `plans/`). The database defaults to **`.lao/state.db`**. **`plans/README.md`** is never treated as a plan. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+Resume behavior: restarting `lao run` continues queue progress from SQLite; tasks interrupted mid-phase are recovered automatically. If you reuse the exact same plan content, LAO recognizes it and avoids starting over.
 
 On a TTY, **`lao run`** uses a **fixed Rich dashboard** (phase, task, model swap line, memory gate summary, queue counts, filtered activity log). Use **`--plain`** for the old timestamped scrolling log (CI, pipes, or debugging).
 
@@ -126,7 +134,7 @@ flowchart LR
 
 ## Documentation
 
-- **Website (marketing & overview):** [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/) — built from [`docs/index.html`](docs/index.html) on the default branch ([`docs/.nojekyll`](docs/.nojekyll) for static assets). Local mirror: [`site/index.html`](site/index.html).
+- **Website (marketing & overview):** [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/) — built from [`docs/index.html`](docs/index.html) on the default branch ([`docs/.nojekyll`](docs/.nojekyll) for static assets).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, queue, model swapping, Git commit cadence
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — `factory.yaml`, paths, `git:` settings
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
@@ -140,6 +148,12 @@ cd local-ai-agent-orchestrator
 ```
 
 ## Changelog
+
+### v2.0.0
+
+- **Unified UX:** `lao`, `lao init`, and `lao configure-models` now match the polished `lao run` visual language with guided, step-based TTY flows.
+- **Operator continuity:** post-setup/post-config next actions (`health`/`run`) are integrated, reducing dead ends between commands.
+- **Recovery clarity:** startup checks and model-remap guidance are surfaced as first-class interactive flows for smoother long-running operation.
 
 ### v1.3.0
 

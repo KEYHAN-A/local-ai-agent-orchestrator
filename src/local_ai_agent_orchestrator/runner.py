@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import signal
-import sys
 import time
 from pathlib import Path
 
@@ -303,7 +302,7 @@ def run_entry(
     plan: str | None = None,
     single_run: bool = False,
     use_tui: bool = False,
-):
+) -> bool:
     """Main entry after CLI parsed args and init_settings() ran."""
     setup_signals()
     s = get_settings()
@@ -335,15 +334,28 @@ def run_entry(
         mm = ModelManager()
 
         if not mm.health_check():
+            apply_runner_context(
+                phase="Blocked",
+                task="LM Studio unreachable",
+                idle_hint="Start LM Studio server and run `lao` again.",
+            )
             log.error("LM Studio server is not reachable at the configured endpoint.")
-            sys.exit(1)
+            log.error("Start LM Studio, enable local server, then retry.")
+            return False
 
         missing = mm.verify_models_exist()
         if missing:
+            apply_runner_context(
+                phase="Blocked",
+                task="Missing model mappings",
+                idle_hint="Run `lao configure-models` to remap roles.",
+            )
             log.error("Missing required models:")
             for m in missing:
                 log.error(f"  {m}")
-            sys.exit(1)
+            log.error("Run `lao configure-models` to update model names for each role.")
+            log.error("Tip: list available keys with `lms ls` or `lao health`.")
+            return False
 
         if not mm.check_guardrails():
             log.warning(
@@ -367,7 +379,7 @@ def run_entry(
                 plan_file, plan_text, plan_id = load_specific_plan(plan, queue)
             except ReservedPlanStemError as e:
                 log.error("%s", e)
-                sys.exit(1)
+                return False
             log.info(f"Loaded plan: {plan_file.name}")
             tasks = queue.get_plan_tasks(plan_id)
             if not tasks:
@@ -387,6 +399,7 @@ def run_entry(
                 architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
 
         run_factory(mm, queue, single_run=single_run or bool(plan))
+        return True
     finally:
         if dashboard is not None and queue is not None:
             dashboard.print_run_summary(queue)

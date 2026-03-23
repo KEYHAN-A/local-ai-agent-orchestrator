@@ -60,12 +60,12 @@ python -m twine upload dist/*
 
 ## Release checklist (maintainers)
 
-1. Update README changelog, `docs/` (including `docs/index.html` for GitHub Pages), and `site/index.html` if the landing page should match `docs/`.
+1. Update README changelog and `docs/` content, including `docs/index.html` (canonical GitHub Pages source).
 2. Run tests: `python -m unittest discover -s tests -v`
 3. Build: `python -m build` then `python -m twine check dist/*`
 4. Commit and push `main` — Pages serves from the `docs/` folder on the default branch.
 5. Upload: `python -m twine upload dist/*` (see above for token auth).
-6. Optional: tag `git tag v1.x.x && git push origin v1.x.x`.
+6. Optional: tag `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 ## GitHub Actions (optional)
 

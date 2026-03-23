@@ -32,7 +32,30 @@ Roles: `planner`, `coder`, `reviewer`, `embedder`.
 - Code for `plans/MyFeature.md` is written under **`<factory.yaml directory>/MyFeature/`** (same stem as the plan filename, next to `plans/`).
 - **`README.md`** in `plans/` is **ignored** when scanning for new plans (so it is not decomposed as a project plan).
 - **`lao init`** creates **`.lao/`**, **`plans/`**, an optional root **`README.md`** (workspace guide), and **`factory.example.yaml`**.
+- In interactive mode, **`lao init`** also writes a ready-to-run **`factory.yaml`** using guided prompts.
 - SQLite and WAL files belong under **`.lao/`** when using the example `paths.database` — keeps stray `NANO*` / WAL files out of the repo root.
+
+### Interactive setup and recovery
+
+- Running bare **`lao`** (TTY) opens an interactive home flow that shows environment status and guides next actions (`init`, `run`, `health`, `configure-models`).
+- The interactive commands share a consistent visual system (Rich header panels, status tables, guided step prompts), so setup and run phases feel continuous.
+- If startup is blocked by missing models, run **`lao configure-models`** to remap role keys (`planner`, `coder`, `reviewer`, `embedder`) without manually editing YAML.
+- After `lao init` or `lao configure-models`, LAO can immediately chain to next actions (`health` or `run`) from the same guided flow.
+
+### Continue / resume behavior
+
+- LAO persists progress in SQLite (`paths.database`, default `./.lao/state.db`).
+- Restarting **`lao run`** resumes pending/coded work from queue state.
+- Interrupted transient states are automatically recovered on startup:
+  - `coding` -> `pending`
+  - `review` -> `coded`
+- Plan identity is based on plan content hash. Reusing the exact same plan content is recognized as already registered; edited content creates a new plan identity.
+
+### Existing project workflow
+
+- Plan `plans/MyRepo.md` maps to workspace folder `./MyRepo/` (same stem).
+- If `./MyRepo/` already exists (for example a cloned repo), LAO will operate there.
+- This allows an existing codebase workflow by intentionally aligning plan filename stem and target folder name.
 
 ### Discovering model `key` values
 
