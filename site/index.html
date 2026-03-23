@@ -3,173 +3,394 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Local AI Agent Orchestrator — multi-agent coding pipeline for LM Studio: planner, coder, reviewer, SQLite state, memory-safe model swaps. GPL-3.0." />
-  <title>Local AI Agent Orchestrator</title>
+  <meta name="description" content="Local AI Agent Orchestrator (LAO) — run a 24/7 planner, coder, and reviewer pipeline on your hardware with LM Studio, SQLite, memory-safe model swaps, and Git traceability. GPL-3.0." />
+  <title>Local AI Agent Orchestrator · Local LLM coding factory</title>
   <style>
     :root {
-      --bg: #0F172A;
-      --card: #334155;
-      --card-elevated: #3F4D63;
-      --text: #E2E8F0;
-      --muted: #94A3B8;
-      --accent: #6366F1;
-      --accent-bright: #818CF8;
-      --success: #10B981;
-      --warning: #F97316;
-      --border: #3F4D63;
+      --bg-deep: #030712;
+      --bg-card: rgba(30, 41, 59, 0.55);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #818cf8;
+      --accent-dim: #6366f1;
+      --mint: #34d399;
+      --border: rgba(148, 163, 184, 0.15);
+      --glow: rgba(99, 102, 241, 0.35);
     }
-    * { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .hero-mesh, .float-soft { animation: none !important; }
+    }
     body {
       margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-deep);
       color: var(--text);
-      line-height: 1.6;
+      line-height: 1.65;
+      overflow-x: hidden;
     }
-    .wrap { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-    header {
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 1.5rem;
-      margin-bottom: 2rem;
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
     }
-    h1 { font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
-    .tagline { color: var(--muted); font-size: 1.05rem; margin: 0; }
-    .badge {
+    .hero {
+      position: relative;
+      min-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 4rem 1.5rem 5rem;
+    }
+    .hero-mesh {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 20%, rgba(99, 102, 241, 0.25), transparent 55%),
+        radial-gradient(ellipse 70% 50% at 85% 15%, rgba(52, 211, 153, 0.12), transparent 50%),
+        radial-gradient(ellipse 60% 80% at 70% 90%, rgba(129, 140, 248, 0.18), transparent 45%),
+        linear-gradient(180deg, #030712 0%, #0f172a 50%, #030712 100%);
+      animation: mesh-shift 22s ease-in-out infinite alternate;
+    }
+    @keyframes mesh-shift {
+      from { filter: hue-rotate(-6deg) brightness(1); transform: scale(1); }
+      to { filter: hue-rotate(8deg) brightness(1.05); transform: scale(1.02); }
+    }
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      max-width: 56rem;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+    .eyebrow span {
       display: inline-block;
-      margin-top: 0.75rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--muted);
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--mint);
+      box-shadow: 0 0 12px var(--mint);
     }
-    .gh-row {
+    h1 {
+      font-size: clamp(2.15rem, 5vw, 3.35rem);
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      line-height: 1.1;
+      margin: 0 0 1.25rem;
+      background: linear-gradient(135deg, #fff 0%, #c7d2fe 45%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-lead {
+      font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+      color: var(--muted);
+      max-width: 38rem;
+      margin: 0 0 2rem;
+    }
+    .hero-lead strong { color: #e2e8f0; font-weight: 600; }
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.7rem 1.35rem;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--mint), #10b981);
+      color: #022c22;
+      box-shadow: 0 8px 32px rgba(52, 211, 153, 0.25);
+    }
+    .btn-primary:hover { box-shadow: 0 12px 40px rgba(52, 211, 153, 0.35); }
+    .btn-ghost {
+      background: rgba(15, 23, 42, 0.6);
+      border-color: var(--border);
+      color: var(--text);
+      backdrop-filter: blur(8px);
+    }
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .meta-badges {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      margin-top: 1rem;
-    }
-    .gh-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.45rem 0.85rem;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-    }
-    .gh-btn:hover { border-color: var(--accent-bright); color: var(--accent-bright); }
-    .gh-btn.primary { background: var(--success); border-color: #34D399; color: #fff; }
-    .gh-btn.primary:hover { background: #34D399; color: #fff; }
-    h2 { font-size: 1.15rem; margin: 2rem 0 0.75rem; color: var(--accent-bright); }
-    ul { padding-left: 1.2rem; color: var(--muted); }
-    ul strong { color: var(--text); }
-    .grid {
-      display: grid;
-      gap: 1rem;
-      margin: 1.25rem 0;
-    }
-    @media (min-width: 640px) {
-      .grid { grid-template-columns: 1fr 1fr; }
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.15rem;
-    }
-    .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
-    .card p { margin: 0; color: var(--muted); font-size: 0.9rem; }
-    pre {
-      background: #0b0f14;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem;
-      overflow-x: auto;
-      font-size: 0.82rem;
-      line-height: 1.45;
-    }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    footer {
-      margin-top: 3rem;
-      padding-top: 1.5rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       color: var(--muted);
     }
+    .meta-badges span {
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border);
+    }
+    section {
+      padding: 4rem 1.5rem;
+      max-width: 72rem;
+      margin: 0 auto;
+    }
+    .section-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin: 0 0 0.5rem;
+    }
+    h2 {
+      font-size: clamp(1.6rem, 3vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 2rem;
+    }
+    .feature-grid {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) {
+      .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 960px) {
+      .feature-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.35rem 1.5rem;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+      border-color: rgba(129, 140, 248, 0.35);
+      box-shadow: 0 0 0 1px var(--glow);
+    }
+    .card h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 650;
+    }
+    .card p {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .card .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--mint);
+      margin-bottom: 0.5rem;
+    }
+    .steps {
+      display: grid;
+      gap: 1.5rem;
+      counter-reset: step;
+    }
+    @media (min-width: 768px) {
+      .steps { grid-template-columns: repeat(4, 1fr); }
+    }
+    .step {
+      position: relative;
+      padding: 1.25rem;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--border);
+    }
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
+    }
+    .step h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+    .step p { margin: 0; font-size: 0.88rem; color: var(--muted); }
+    pre {
+      margin: 0;
+      padding: 1.25rem 1.35rem;
+      border-radius: 14px;
+      background: #020617;
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      font-size: 0.84rem;
+      line-height: 1.55;
+    }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .links ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0.65rem;
+    }
+    .links a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .links a:hover { text-decoration: underline; }
+    footer {
+      padding: 3rem 1.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+      max-width: 56rem;
+      margin: 0 auto;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Local AI Agent Orchestrator</h1>
-      <p class="tagline">Planner, coder, and reviewer agents on your machine — LM Studio, SQLite, memory-safe model swaps.</p>
-      <span class="badge">v1.1.1 · GPL-3.0-only · Open source</span>
-      <div class="gh-row">
-        <a class="gh-btn primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">GitHub repository</a>
-        <a class="gh-btn" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues" rel="noopener">Issues</a>
-        <a class="gh-btn" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/README.md" rel="noopener">README</a>
-        <a class="gh-btn" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases" rel="noopener">Releases</a>
+  <header class="hero" id="top">
+    <div class="hero-mesh" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <p class="eyebrow"><span></span> Local-first · LM Studio · Your silicon</p>
+      <h1>Run a coding agent factory on your own hardware, around the clock</h1>
+      <p class="hero-lead">
+        <strong>Local AI Agent Orchestrator (LAO)</strong> turns markdown plans into shipped code using a
+        <strong>planner → coder → reviewer</strong> loop—no cloud API required at runtime. Swap heavy models safely,
+        keep state in <strong>SQLite</strong>, and let your Mac or workstation put <strong>local LLMs</strong> to work
+        while you sleep.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View on GitHub</a>
+        <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install from PyPI</a>
       </div>
-    </header>
-
-    <p>OpenAI-SDK-native pipeline (no heavy agent framework). Optimized for <strong>local inference</strong>, <strong>tight context windows</strong>, and <strong>one big model in RAM at a time</strong>.</p>
-
-    <div class="grid">
-      <div class="card">
-        <h3>Three-phase loop</h3>
-        <p>Architect decomposes plans into micro-tasks. Coder writes code with tools. Reviewer approves or sends feedback.</p>
-      </div>
-      <div class="card">
-        <h3>Persistent state</h3>
-        <p>SQLite WAL queue survives crashes; retry limits; full run log for audits.</p>
-      </div>
-      <div class="card">
-        <h3>Memory gate</h3>
-        <p>After unload, waits for macOS unified memory to reclaim pages before the next load — less swap / SSD wear.</p>
-      </div>
-      <div class="card">
-        <h3>Configurable</h3>
-        <p><code>factory.yaml</code> + CLI <code>lao</code>: URL, RAM, paths, per-role model keys.</p>
-      </div>
-      <div class="card">
-        <h3>Reviewer (v1.1+)</h3>
-        <p>Reasoning models (e.g. R1 distill) can think before they answer — LAO strips <em>think</em> blocks and finds <code>APPROVED</code> / <code>REJECTED</code> on any line.</p>
-      </div>
-      <div class="card">
-        <h3>Clean layout (v1.1.1)</h3>
-        <p>SQLite lives under <code>.lao/state.db</code>. Code for <code>plans/MyPlan.md</code> is written to <code>./MyPlan/</code> next to <code>plans/</code>. Internal fallback: <code>.lao/_misc/</code>.</p>
+      <div class="meta-badges">
+        <span>v1.3.0</span>
+        <span>GPL-3.0-only</span>
+        <span>OpenAI SDK → LM Studio</span>
+        <span>CLI: <code style="font-size: inherit;">lao</code></span>
       </div>
     </div>
+  </header>
 
-    <h2>Install &amp; run</h2>
-    <pre><code>git clone https://github.com/KEYHAN-A/local-ai-agent-orchestrator.git
-cd local-ai-agent-orchestrator
-python -m venv .venv &amp;&amp; source .venv/bin/activate
-pip install -e .
+  <section id="features" aria-labelledby="features-h">
+    <p class="section-title" id="features-h">Capabilities</p>
+    <h2>Built to squeeze serious work out of local models</h2>
+    <div class="feature-grid">
+      <article class="card">
+        <h3>Three-agent pipeline</h3>
+        <p>Architect breaks plans into micro-tasks. Coder edits files with tools. Reviewer approves or sends structured rework—without bloated agent-framework scaffolding.</p>
+      </article>
+      <article class="card">
+        <h3>SQLite backbone</h3>
+        <p>WAL-mode queue survives crashes; retries, run logs, and token tallies stay queryable while jobs churn overnight.</p>
+      </article>
+      <article class="card">
+        <h3>Memory-aware swaps</h3>
+        <p>Loads one big LLM at a time, unloads the rest, and waits for unified memory to settle—less swap thrash on Apple Silicon when models are tens of GB.</p>
+      </article>
+      <article class="card">
+        <h3>Semantic retrieval</h3>
+        <p>Optional embedder (e.g. Nomic) narrows file context before coding so small local windows still hit the right files.</p>
+      </article>
+      <article class="card">
+        <span class="tag">New in v1.3</span>
+        <h3>Git you can trust</h3>
+        <p>Per-plan repos get <code>LAO_PLAN.md</code>, <code>LAO_TASKS.json</code>, and commits named <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable and easy to revert.</p>
+      </article>
+      <article class="card">
+        <h3>Operator-friendly CLI</h3>
+        <p><code>factory.yaml</code> plus flags for URLs, RAM, models, and paths. Rich dashboard on a TTY, or <code>--plain</code> for logs in CI.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="flow" aria-labelledby="flow-h">
+    <p class="section-title" id="flow-h">Flow</p>
+    <h2>From markdown to merged changes</h2>
+    <div class="steps">
+      <div class="step">
+        <h3>Drop a plan</h3>
+        <p>Add <code>plans/Feature.md</code>. LAO hashes content and opens a matching project folder next to <code>plans/</code>.</p>
+      </div>
+      <div class="step">
+        <h3>Decompose</h3>
+        <p>The planner model emits a JSON task list; tasks land in SQLite with dependencies and priorities.</p>
+      </div>
+      <div class="step">
+        <h3>Code &amp; review</h3>
+        <p>The coder model uses file tools inside the plan workspace; the reviewer model verdicts APPROVED or REJECTED with feedback loops.</p>
+      </div>
+      <div class="step">
+        <h3>Ship &amp; rewind</h3>
+        <p>Optional Git commits after each phase; roll back a single agent step or replay history with standard Git tools.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="install-h">
+    <p class="section-title" id="install-h">Quick start</p>
+    <h2>Install and run in minutes</h2>
+    <pre><code>pip install local-ai-agent-orchestrator
 lao init &amp;&amp; cp factory.example.yaml factory.yaml
-# Edit factory.yaml — set model keys from `lms ls`
+# Edit factory.yaml — point lm_studio_base_url and model keys (`lms ls`)
 lao health
 lao run</code></pre>
+    <p style="margin-top:1rem;color:var(--muted);font-size:0.92rem;">
+      From source: clone the repo, <code>pip install -e .</code>, same commands. Use <code>lao --plan plans/YourPlan.md --single-run run</code> for one-shot runs.
+    </p>
+  </section>
 
-    <h2>Documentation (on GitHub)</h2>
+  <section class="links" id="docs" aria-labelledby="docs-h">
+    <p class="section-title" id="docs-h">Docs</p>
+    <h2>On GitHub</h2>
     <ul>
-      <li><strong>Configuration</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">docs/CONFIGURATION.md</a></li>
-      <li><strong>Architecture</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
-      <li><strong>Contributing</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONTRIBUTING.md">docs/CONTRIBUTING.md</a></li>
-      <li><strong>PyPI publishing</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/PYPI_PUBLISH.md">docs/PYPI_PUBLISH.md</a></li>
-      <li><strong>License</strong> — <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/LICENSE">GPL-3.0</a></li>
+      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">Configuration</a> — <code>factory.yaml</code>, paths, Git options</li>
+      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md">Architecture</a> — modules, queue, Git cadence</li>
+      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/README.md">README</a> — full reference &amp; changelog</li>
+      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues">Issues</a> — feedback &amp; bugs</li>
     </ul>
+  </section>
 
-    <footer>
-      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator">KEYHAN-A/local-ai-agent-orchestrator</a> · <strong>v1.1.1</strong> · PyPI name <code>local-ai-agent-orchestrator</code> · CLI <code>lao</code>
-    </footer>
-  </div>
+  <footer>
+    <p>
+      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator">KEYHAN-A/local-ai-agent-orchestrator</a>
+      · PyPI <code>local-ai-agent-orchestrator</code>
+      · Licensed under <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/LICENSE">GPL-3.0</a>
+    </p>
+  </footer>
 </body>
 </html>

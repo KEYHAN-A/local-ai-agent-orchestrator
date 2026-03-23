@@ -16,6 +16,9 @@ Top-level keys:
 | `paths.workspace` | Optional fallback when no per-plan context is active (default: `.lao/_misc`) |
 | `memory_gate.*` | `release_fraction`, `swap_growth_limit_mb`, `settle_timeout_s`, `poll_interval_s` |
 | `orchestration.*` | Timeouts, retries, `max_task_attempts`, `plan_watch_interval_s` |
+| `git.enabled` | When **true** (default), run Git commits in each **per-plan project folder** (`./<plan-stem>/`). Requires **`git`** on `PATH` and committer identity. Override with CLI **`--no-git`**. |
+| `git.plan_file_name` | Snapshot filename for the plan markdown (default **`LAO_PLAN.md`**) |
+| `git.commit_trailers` | When **true**, add **`LAO-Plan-ID`** / **`LAO-Task-ID`** lines to the commit body (second `-m` paragraph) |
 | `models.<role>` | `key`, `context_length`, `max_completion`, `supports_tools`, `size_bytes`, `description` |
 
 Roles: `planner`, `coder`, `reviewer`, `embedder`.

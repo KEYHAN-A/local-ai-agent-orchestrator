@@ -9,6 +9,9 @@ __pycache__/
 dist/
 build/
 .env
+# Local LM Studio config (use factory.example.yaml in-repo)
+factory.yaml
+factory.yml
 # Local PyPI / secrets notes (see docs/PYPI_PUBLISH.md for the public guide)
 PYPI_PUBLISH.local.md
 # LAO runtime: DB, WAL, per-plan workspaces, caches — keep repo root clean

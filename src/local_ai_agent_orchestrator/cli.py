@@ -47,6 +47,11 @@ def _write_example_config(dest: Path) -> None:
             "llm_retry_attempts": 3,
             "llm_retry_backoff_base_s": 5,
         },
+        "git": {
+            "enabled": True,
+            "plan_file_name": "LAO_PLAN.md",
+            "commit_trailers": False,
+        },
         "models": {
             "planner": {
                 "key": "qwen_qwen3.5-35b-a3b",
@@ -138,6 +143,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Classic scrolling log (no full-screen dashboard)",
     )
+    parser.add_argument(
+        "--no-git",
+        action="store_true",
+        help="Disable per-plan Git snapshots and phase commits (overrides factory.yaml)",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
@@ -216,6 +226,8 @@ def main(argv: list[str] | None = None) -> None:
         overrides["plans_dir"] = args.plans_dir
     if args.db_path:
         overrides["db_path"] = args.db_path
+    if args.no_git:
+        overrides["git_enabled"] = False
 
     init_settings(
         config_path=cfg_path,

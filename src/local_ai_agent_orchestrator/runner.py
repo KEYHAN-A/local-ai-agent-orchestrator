@@ -14,6 +14,7 @@ import sys
 import time
 from pathlib import Path
 
+from local_ai_agent_orchestrator import plan_git
 from local_ai_agent_orchestrator.model_manager import ModelManager
 from local_ai_agent_orchestrator.phases import (
     architect_phase,
@@ -56,7 +57,15 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
             log.info(f"{'='*60}")
             apply_runner_context(phase="Architect", plan=plan_file.name, task="Decomposing plan")
             try:
-                architect_phase(mm, queue, plan_id, plan_text)
+                ws = queue.workspace_for_plan(plan_id)
+                plan_git.snapshot_and_commit_plan(
+                    ws,
+                    plan_file.stem,
+                    plan_file.name,
+                    plan_text,
+                    plan_id,
+                )
+                architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
             except Exception as e:
                 log.error(f"Architect phase failed for {plan_file.name}: {e}")
                 continue
@@ -367,7 +376,15 @@ def run_entry(
                     plan=plan_file.name,
                     task="Decomposing plan",
                 )
-                architect_phase(mm, queue, plan_id, plan_text)
+                ws = queue.workspace_for_plan(plan_id)
+                plan_git.snapshot_and_commit_plan(
+                    ws,
+                    plan_file.stem,
+                    plan_file.name,
+                    plan_text,
+                    plan_id,
+                )
+                architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
 
         run_factory(mm, queue, single_run=single_run or bool(plan))
     finally:

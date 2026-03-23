@@ -66,6 +66,15 @@ def _default_models() -> dict[str, ModelConfig]:
 
 
 @dataclass
+class GitSettings:
+    """Per-plan Git snapshots and phase commits (see docs/CONFIGURATION.md)."""
+
+    enabled: bool = True
+    plan_file_name: str = "LAO_PLAN.md"
+    commit_trailers: bool = False
+
+
+@dataclass
 class Settings:
     lm_studio_base: str = "http://127.0.0.1:1234"
     openai_api_key: str = "lm-studio"
@@ -91,6 +100,8 @@ class Settings:
     swap_growth_limit_mb: float = 512.0
     memory_settle_timeout_s: int = 60
     memory_poll_interval_s: int = 2
+
+    git: GitSettings = field(default_factory=GitSettings)
 
     @property
     def openai_base_url(self) -> str:
@@ -177,9 +188,12 @@ def init_settings(
     for k, v in overrides.items():
         if v is None or k == "model_key_overrides":
             continue
+        if k == "git_enabled" and v is not None:
+            base = replace(base, git=replace(base.git, enabled=bool(v)))
+            continue
         if k in path_keys and v is not None:
             base = replace(base, **{k: Path(v).expanduser().resolve()})
-        elif hasattr(base, k) and k not in ("models",):
+        elif hasattr(base, k) and k not in ("models", "git"):
             base = replace(base, **{k: v})
 
     _settings = base
@@ -247,6 +261,18 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 description=str(spec.get("description", cur.description)),
             )
         base = replace(base, models=merged)
+
+    git_cfg = data.get("git") or {}
+    if git_cfg:
+        g = base.git
+        base = replace(
+            base,
+            git=GitSettings(
+                enabled=bool(git_cfg.get("enabled", g.enabled)),
+                plan_file_name=str(git_cfg.get("plan_file_name", g.plan_file_name)),
+                commit_trailers=bool(git_cfg.get("commit_trailers", g.commit_trailers)),
+            ),
+        )
 
     return base
 

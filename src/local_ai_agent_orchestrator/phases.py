@@ -11,10 +11,13 @@ Each phase:
 """
 
 import json
-import time
-import re
 import logging
+import re
+import time
+from pathlib import Path
 from typing import Optional
+
+from local_ai_agent_orchestrator import plan_git
 
 from openai import OpenAI
 
@@ -181,6 +184,7 @@ def architect_phase(
     queue: TaskQueue,
     plan_id: str,
     plan_text: str,
+    plan_filename: str,
 ) -> list[dict]:
     """
     Decompose a master plan into micro-tasks using the Planner model.
@@ -241,6 +245,13 @@ def architect_phase(
         queue.mark_plan_active(plan_id)
 
         log.info(f"[Architect] Created {len(tasks)} micro-tasks in {duration:.1f}s")
+        plan_git.commit_after_architect(
+            queue.workspace_for_plan(plan_id),
+            queue,
+            plan_id,
+            Path(plan_filename).stem,
+            len(tasks),
+        )
         return tasks
 
     except Exception as e:
@@ -363,6 +374,12 @@ def coder_phase(
         )
 
         log.info(f"[Coder] Completed task #{task.id} in {duration:.1f}s")
+        plan_git.commit_after_coder(
+            queue.workspace_for_plan(task.plan_id),
+            task.plan_id,
+            task.id,
+            task.title,
+        )
         return output
 
     except Exception as e:
@@ -539,8 +556,17 @@ def reviewer_phase(
     # Re-read the task to get latest coder_output
     task = queue.get_task(task.id)
     if not task or not task.coder_output:
-        log.error(f"[Reviewer] Task #{task.id} has no coder output to review")
-        queue.mark_rework(task.id, "No coder output found")
+        tid = task.id if task else None
+        log.error(f"[Reviewer] Task #{tid} has no coder output to review")
+        if task:
+            queue.mark_rework(task.id, "No coder output found")
+            plan_git.commit_after_reviewer(
+                queue.workspace_for_plan(task.plan_id),
+                task.plan_id,
+                task.id,
+                task.title,
+                "rejected",
+            )
         return False
 
     # Also read the actual files written (if mentioned in coder output)
@@ -575,16 +601,26 @@ def reviewer_phase(
 
         approved, feedback = _parse_reviewer_verdict(content)
 
+        ws = queue.workspace_for_plan(task.plan_id)
         if approved:
             queue.mark_completed(task.id)
             log.info(f"[Reviewer] APPROVED task #{task.id} in {duration:.1f}s")
+            plan_git.commit_after_reviewer(
+                ws, task.plan_id, task.id, task.title, "approved"
+            )
         else:
             if task.attempt + 1 >= task.max_attempts:
                 queue.mark_failed(task.id, f"Max attempts reached. Last feedback: {feedback}")
                 log.warning(f"[Reviewer] Task #{task.id} FAILED after {task.max_attempts} attempts")
+                plan_git.commit_after_reviewer(
+                    ws, task.plan_id, task.id, task.title, "failed"
+                )
             else:
                 queue.mark_rework(task.id, feedback)
                 log.info(f"[Reviewer] REJECTED task #{task.id}: {feedback[:100]}...")
+                plan_git.commit_after_reviewer(
+                    ws, task.plan_id, task.id, task.title, "rejected"
+                )
 
         return approved
 

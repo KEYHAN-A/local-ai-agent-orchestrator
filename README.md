@@ -48,7 +48,7 @@ python main.py health
 pip install local-ai-agent-orchestrator
 ```
 
-**v1.2.0** pulls in **`rich`** (terminal dashboard). Upgrade with `pip install -U local-ai-agent-orchestrator`.
+**v1.3.0** adds optional **per-plan Git** commits (`lao(plan|architect|coder|reviewer): …`). **v1.2.0** added **`rich`** (terminal dashboard). Upgrade with `pip install -U local-ai-agent-orchestrator`.
 
 ## Quick start
 
@@ -84,6 +84,7 @@ lao --plan plans/my_project.md --single-run run
 | `--lm-studio-url URL` | Override base URL |
 | `--ram-gb N` | Total RAM (logged; future tuning) |
 | `--plain` | Classic scrolling log instead of the full-screen dashboard |
+| `--no-git` | Disable per-plan Git snapshots and phase commits (overrides `factory.yaml`) |
 | `--workspace`, `--plans-dir`, `--db` | Paths |
 | `--planner-model`, `--coder-model`, `--reviewer-model`, `--embedder-model` | Override keys without editing YAML |
 
@@ -94,6 +95,10 @@ Environment: `LM_STUDIO_BASE_URL`, `OPENAI_API_KEY`, `LAO_CONFIG` (path to yaml)
 After `lao init` and copying `factory.yaml`, code for **`plans/MyPlan.md`** is written under **`./MyPlan/`** (same folder name as the plan stem, next to `plans/`). The database defaults to **`.lao/state.db`**. **`plans/README.md`** is never treated as a plan. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 On a TTY, **`lao run`** uses a **fixed Rich dashboard** (phase, task, model swap line, memory gate summary, queue counts, filtered activity log). Use **`--plain`** for the old timestamped scrolling log (CI, pipes, or debugging).
+
+### Git traceability (v1.3.0+)
+
+For each plan, LAO targets **`<config_dir>/<plan-stem>/`** (your project folder). When **`git.enabled`** is true in `factory.yaml` (default), LAO runs **`git init`** if needed, writes **`LAO_PLAN.md`** (plan snapshot), then commits after the **plan snapshot**, **architect** (writes **`LAO_TASKS.json`**), **coder**, and **reviewer** (appends **`LAO_REVIEW.log`**). Subjects look like **`lao(coder): task #42 …`** so you can **`git log`** or revert step by step. Requires **`git`** on your `PATH` and a configured **`user.name` / `user.email`** (repo-local or global). Disable with **`git.enabled: false`** or **`lao --no-git run`**.
 
 ## Architecture
 
@@ -132,6 +137,11 @@ cd local-ai-agent-orchestrator
 ```
 
 ## Changelog
+
+### v1.3.0
+
+- **Git:** Optional per-plan repo under **`./<plan-stem>/`**: snapshot **`LAO_PLAN.md`**, **`LAO_TASKS.json`** after architect, commits after coder/reviewer with **`lao(…):`** messages; **`LAO_REVIEW.log`** for review outcomes. Config **`git:`** in `factory.yaml`; CLI **`--no-git`**.
+- **Site:** Redesigned GitHub Pages landing (hero, features, install).
 
 ### v1.2.0
 

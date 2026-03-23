@@ -12,6 +12,7 @@
 | `phases.py` | `architect_phase`, `coder_phase`, `reviewer_phase` + OpenAI client |
 | `state.py` | SQLite WAL: plans, micro_tasks, run_log |
 | `tools.py` | Filesystem + shell + embedding search |
+| `plan_git.py` | Optional per-plan Git: `git init`, plan snapshot, phase commits (`lao(plan|architect|coder|reviewer): …`) |
 | `prompts.py` | System prompts and message builders |
 
 ## Execution flow
@@ -21,6 +22,17 @@
 3. **Coder:** For each pending task, load coder model, optional embedding retrieval, tool loop until final message. File tools run inside **`use_plan_workspace`**: **`<config_dir>/<plan-stem>/`** derived from the plan’s `.md` filename.
 4. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then any line starting with `APPROVED` / `REJECTED` is used for the verdict; state transitions.
 5. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
+
+## Git commits (v1.3.0+)
+
+When **`git.enabled`** is true, the orchestrator uses the **per-plan workspace** directory (`<config_dir>/<plan-stem>/`) as a Git repo:
+
+1. **Before architect:** ensure `.git`, write **`LAO_PLAN.md`**, commit **`lao(plan): …`** (skipped if nothing staged).
+2. **After architect:** write **`LAO_TASKS.json`**, commit **`lao(architect): …`**.
+3. **After coder:** commit **`lao(coder): task #<id> …`** (files from tools are staged with `git add -A`).
+4. **After reviewer:** append **`LAO_REVIEW.log`**, commit **`lao(reviewer): …`** (approved / rejected / failed).
+
+Commits are skipped when there is nothing to stage (except reviewer, which always appends a log line when the hook runs). Existing user repos are respected (no re-init if `.git` exists).
 
 ## Model swapping
 
