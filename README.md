@@ -1,6 +1,6 @@
 # Local AI Agent Orchestrator
 
-**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.1.0**).
+**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional per-plan Git commits, and a unified interactive CLI UX across `lao`, `lao init`, `lao configure-models`, and `lao run` (**v2.1.1**).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -148,6 +148,11 @@ cd local-ai-agent-orchestrator
 ```
 
 ## Changelog
+
+### v2.1.1
+
+- **Website metadata:** replaced hardcoded site version text with live GitHub/PyPI badges and direct latest-release links.
+- **Publish workflow reliability:** release-triggered PyPI automation now avoids duplicate tag/release uploads while keeping manual re-run support.
 
 ### v2.1.0
 
