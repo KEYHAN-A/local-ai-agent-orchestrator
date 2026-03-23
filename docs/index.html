@@ -151,6 +151,15 @@
       background: rgba(15, 23, 42, 0.8);
       border: 1px solid var(--border);
     }
+    .meta-badges a {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    .meta-badges img {
+      height: 20px;
+      border-radius: 6px;
+    }
     section {
       padding: 4rem 1.5rem;
       max-width: 72rem;
@@ -298,7 +307,15 @@
         <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install from PyPI</a>
       </div>
       <div class="meta-badges">
-        <span>v2.0.0</span>
+        <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener" aria-label="Latest GitHub release">
+          <img src="https://img.shields.io/github/v/release/KEYHAN-A/local-ai-agent-orchestrator?display_name=tag&label=GitHub%20release&logo=github" alt="Latest GitHub release" />
+        </a>
+        <a href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener" aria-label="Latest PyPI version">
+          <img src="https://img.shields.io/pypi/v/local-ai-agent-orchestrator?label=PyPI%20version&logo=pypi" alt="Latest PyPI version" />
+        </a>
+        <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener">
+          <span>Release notes</span>
+        </a>
         <span>GPL-3.0-only</span>
         <span>OpenAI SDK → LM Studio</span>
         <span>CLI: <code style="font-size: inherit;">lao</code></span>
