@@ -1,20 +1,30 @@
 # Local AI Agent Orchestrator
 
+**Local multi-agent coding pipeline** for [LM Studio](https://lmstudio.ai/) and other OpenAI-compatible local servers: planner, coder, and reviewer with SQLite state, memory-aware model swaps, optional **per-plan Git** commits (**v1.3.0**), and a Rich terminal dashboard (**v1.2.0**).
+
+[![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
+[![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-KEYHAN--A%2Flocal--ai--agent--orchestrator-181717?logo=github)](https://github.com/KEYHAN-A/local-ai-agent-orchestrator)
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-222?logo=github)](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
+[![Website](https://img.shields.io/badge/Website-GitHub%20Pages-222?logo=github)](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
 
-**Repository:** [github.com/KEYHAN-A/local-ai-agent-orchestrator](https://github.com/KEYHAN-A/local-ai-agent-orchestrator)  
-**Live site:** [KEYHAN-A.github.io/local-ai-agent-orchestrator](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
+| Resource | Link |
+|----------|------|
+| **PyPI package** | [https://pypi.org/project/local-ai-agent-orchestrator/](https://pypi.org/project/local-ai-agent-orchestrator/) |
+| **Project website** | [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/) |
+| **Source code** | [https://github.com/KEYHAN-A/local-ai-agent-orchestrator](https://github.com/KEYHAN-A/local-ai-agent-orchestrator) |
+| **Issues & feature requests** | [https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues](https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues) |
+| **License** | [GPL-3.0-only](LICENSE) — [`LICENSE`](LICENSE) file in this repository |
 
-**License:** [GPL-3.0-only](LICENSE)
+Install: `pip install local-ai-agent-orchestrator` (CLI: **`lao`**). Upgrade: `pip install -U local-ai-agent-orchestrator`.
 
-A lightweight, framework-free **multi-agent coding orchestrator** for **local LLMs** served by [LM Studio](https://lmstudio.ai/) (OpenAI-compatible API). It runs a **planner → coder → reviewer** pipeline with **SQLite-backed** task queues, **explicit model load/unload**, and a **macOS memory gate** to reduce swap thrashing when swapping 20GB+ models on unified memory.
+**Highlights**
 
 - **Planner:** decomposes a master plan into file-level micro-tasks (JSON).
 - **Coder:** implements tasks with tool use (`file_read`, `file_write`, `shell_exec`, …).
 - **Reviewer:** validates output (APPROVED / REJECTED with feedback); **v1.1.0+** parses verdicts after stripping reasoning / *think*-block prefixes (R1-style models).
 - **Embedder:** optional semantic file retrieval before coding (Nomic via LM Studio).
+- **Git (v1.3.0+):** optional commits in each plan’s project folder (`LAO_PLAN.md`, `LAO_TASKS.json`, `LAO_REVIEW.log`, `lao(architect|coder|reviewer): …` messages). See [Git traceability](#git-traceability) below.
 
 ## Why not CrewAI / LangChain here?
 
@@ -46,9 +56,10 @@ python main.py health
 
 ```bash
 pip install local-ai-agent-orchestrator
+# pip install -U local-ai-agent-orchestrator   # upgrade
 ```
 
-**v1.3.0** adds optional **per-plan Git** commits (`lao(plan|architect|coder|reviewer): …`). **v1.2.0** added **`rich`** (terminal dashboard). Upgrade with `pip install -U local-ai-agent-orchestrator`.
+Package index: [https://pypi.org/project/local-ai-agent-orchestrator/](https://pypi.org/project/local-ai-agent-orchestrator/).
 
 ## Quick start
 
@@ -96,9 +107,9 @@ After `lao init` and copying `factory.yaml`, code for **`plans/MyPlan.md`** is w
 
 On a TTY, **`lao run`** uses a **fixed Rich dashboard** (phase, task, model swap line, memory gate summary, queue counts, filtered activity log). Use **`--plain`** for the old timestamped scrolling log (CI, pipes, or debugging).
 
-### Git traceability (v1.3.0+)
+### Git traceability
 
-For each plan, LAO targets **`<config_dir>/<plan-stem>/`** (your project folder). When **`git.enabled`** is true in `factory.yaml` (default), LAO runs **`git init`** if needed, writes **`LAO_PLAN.md`** (plan snapshot), then commits after the **plan snapshot**, **architect** (writes **`LAO_TASKS.json`**), **coder**, and **reviewer** (appends **`LAO_REVIEW.log`**). Subjects look like **`lao(coder): task #42 …`** so you can **`git log`** or revert step by step. Requires **`git`** on your `PATH` and a configured **`user.name` / `user.email`** (repo-local or global). Disable with **`git.enabled: false`** or **`lao --no-git run`**.
+Since **v1.3.0**, for each plan LAO targets **`<config_dir>/<plan-stem>/`** (your project folder). When **`git.enabled`** is true in `factory.yaml` (default), LAO runs **`git init`** if needed, writes **`LAO_PLAN.md`** (plan snapshot), then commits after the **plan snapshot**, **architect** (writes **`LAO_TASKS.json`**), **coder**, and **reviewer** (appends **`LAO_REVIEW.log`**). Subjects look like **`lao(coder): task #42 …`** so you can **`git log`** or revert step by step. Requires **`git`** on your `PATH` and a configured **`user.name` / `user.email`** (repo-local or global). Disable with **`git.enabled: false`** or **`lao --no-git run`**.
 
 ## Architecture
 
@@ -115,21 +126,13 @@ flowchart LR
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+- **Website (marketing & overview):** [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/) — built from [`docs/index.html`](docs/index.html) on the default branch ([`docs/.nojekyll`](docs/.nojekyll) for static assets). Local mirror: [`site/index.html`](site/index.html).
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, queue, model swapping, Git commit cadence
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — `factory.yaml`, paths, `git:` settings
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-- [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md) — publishing to PyPI
-- [site/index.html](site/index.html) — same landing page for local preview (mirrors [docs/index.html](docs/index.html) served on Pages)
+- [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md) — maintainers: publishing to PyPI
 
-## GitHub and GitHub Pages
-
-This project is **open source** on GitHub: [KEYHAN-A/local-ai-agent-orchestrator](https://github.com/KEYHAN-A/local-ai-agent-orchestrator).
-
-**GitHub Pages** serves the static site from the `docs/` folder on `main` (with [docs/.nojekyll](docs/.nojekyll) so paths are served as static files):
-
-- **Live site:** [https://KEYHAN-A.github.io/local-ai-agent-orchestrator/](https://KEYHAN-A.github.io/local-ai-agent-orchestrator/)
-
-To clone and contribute:
+Clone for development:
 
 ```bash
 git clone https://github.com/KEYHAN-A/local-ai-agent-orchestrator.git
