@@ -20,10 +20,11 @@
 
 1. **Operator entry:** `lao` presents environment readiness and guides next action (`init`, `health`, `configure-models`, `run`).
 2. **Plans:** New `.md` files under `plans/` (or `--plan`) are hashed; new content gets a `plan_id` and architect run.
-2. **Architect:** Single chat completion; output parsed as JSON array of micro-tasks; inserted into SQLite.
-3. **Coder:** For each pending task, load coder model, optional embedding retrieval, tool loop until final message. File tools run inside **`use_plan_workspace`**: **`<config_dir>/<plan-stem>/`** derived from the plan’s `.md` filename.
-4. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then any line starting with `APPROVED` / `REJECTED` is used for the verdict; state transitions.
-5. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
+3. **Architect:** The plan text may be **split into chunks** to fit the planner context. Each chunk is sent to the planner model; output is parsed as a **JSON array** of micro-tasks. Chunk results are merged, deduplicated at the plan level, and persisted to SQLite. Completed chunks can be **skipped on resume** if already stored.
+4. **Scheduler:** With **`phase_gated`**, the runner may batch **coder** work then **reviewer** work in waves (`coder_batch_size`, `reviewer_batch_size`). Otherwise it alternates coder → reviewer per task. Dependencies constrain which **pending** tasks are eligible.
+5. **Coder:** For each pending task, load coder model, optional embedding retrieval (`find_relevant_files`), tool loop until final message. File tools run inside **`use_plan_workspace`**: **`<config_dir>/<plan-stem>/`** derived from the plan’s `.md` filename.
+6. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then output is parsed as **structured JSON** (`verdict`, `findings`, `summary`)—including JSON inside **markdown fences** or embedded in prose. Optional static **validators** may add findings and reject before the LLM review when quality gates are strict enough. State transitions: completed, rework (with feedback), or failed after max attempts.
+7. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
 
 ## Resume semantics
 

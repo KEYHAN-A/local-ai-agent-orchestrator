@@ -56,25 +56,30 @@ python -m twine upload dist/*
 ## After publishing
 
 - Bump `version` in `pyproject.toml` and `__version__` in `src/local_ai_agent_orchestrator/__init__.py` for every new release.
+- Add release notes under **[CHANGELOG.md](../CHANGELOG.md)** (canonical history).
 - Users install with: `pip install local-ai-agent-orchestrator` (CLI: `lao`).
 
 ## Release checklist (maintainers)
 
-1. Update README changelog and `docs/` content, including `docs/index.html` (canonical GitHub Pages source).
-2. Run tests: `python -m unittest discover -s tests -v`
-3. Build: `python -m build` then `python -m twine check dist/*`
-4. Commit and push `main` — Pages serves from the `docs/` folder on the default branch.
-5. Upload: `python -m twine upload dist/*` (see above for token auth).
-6. Optional: tag `git tag vX.Y.Z && git push origin vX.Y.Z`.
+1. Bump version in `pyproject.toml` and `src/local_ai_agent_orchestrator/__init__.py`.
+2. Update **[CHANGELOG.md](../CHANGELOG.md)** and, if needed, **[README.md](../README.md)** / **[docs/index.html](index.html)** (GitHub Pages source).
+3. Run tests: `python -m unittest discover -s tests -v`
+4. Commit and push `main`.
+5. Tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
+6. **Create a GitHub Release** for that tag (UI or `gh release create vX.Y.Z --notes-file …`). This is what triggers automated PyPI upload in CI.
+7. Confirm the **Publish to PyPI** workflow succeeded on the `pypi` environment.
+8. Manual fallback: `python -m build`, `python -m twine check dist/*`, `python -m twine upload dist/*` (token auth), or run the workflow via **Actions → Publish to PyPI → Run workflow** (`workflow_dispatch`).
 
 ## GitHub Actions (recommended)
 
 Use [trusted publishing](https://docs.pypi.org/trusted-publishers/) so CI can upload without long-lived tokens on your machine.
 
-This repository includes `.github/workflows/publish-pypi.yml` that publishes on:
+This repository includes [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml), which publishes when:
 
-- GitHub release `published`
-- tag push matching `v*` (for example `v2.1.0`)
+- A **GitHub Release** is **published** (`release: types: [published]`), or
+- The workflow is run manually (**workflow_dispatch**).
+
+Pushing a `v*` tag alone **does not** trigger this workflow; create the **Release** (or dispatch the workflow) after the tag exists.
 
 ### Configure Trusted Publisher once
 
@@ -85,4 +90,4 @@ This repository includes `.github/workflows/publish-pypi.yml` that publishes on:
    - Environment: `pypi`
 2. In GitHub, create environment `pypi` (optional protections as desired).
 
-After this, creating a release or pushing a `v*` tag can publish automatically.
+After this, **publishing a GitHub Release** (or a manual workflow run) uploads to PyPI automatically.
