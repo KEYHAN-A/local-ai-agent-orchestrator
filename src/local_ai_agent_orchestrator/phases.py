@@ -703,17 +703,6 @@ def reviewer_phase(
                 file_path=f.file_path,
                 fix_hint=f.fix_hint,
             )
-            queue.add_validation_run(
-                task.id,
-                kind="validator",
-                success=(f.severity.lower() not in {"critical", "major"}),
-                command=f.issue_class,
-                output=f.message,
-                status="completed",
-                return_code=0,
-                started_at=validation_start,
-                finished_at=validation_end,
-            )
         profile = get_settings().validation_profiles.get(
             get_settings().validation_profile,
             {"block_on_severities": ["critical", "major"]},
