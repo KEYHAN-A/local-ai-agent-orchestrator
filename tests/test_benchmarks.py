@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import local_ai_agent_orchestrator.benchmarks as benchmark_mod
 from local_ai_agent_orchestrator.benchmarks import (
     run_benchmark_suite,
     write_benchmark_report,
@@ -38,8 +39,35 @@ class TestBenchmarks(unittest.TestCase):
             self.assertEqual(payload["total"], 7)
             self.assertIn("pass_rate", payload)
             self.assertIn("gate", payload)
+            self.assertIn("gate_reasons", payload["gate"])
             out = write_benchmark_report(root, payload)
             self.assertTrue(out.exists())
+
+    def test_threshold_violations_produce_gate_reasons(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+
+            original = benchmark_mod._benchmark_synthetic_artifact_detection
+            try:
+                benchmark_mod._benchmark_synthetic_artifact_detection = lambda: {
+                    "passed": True,
+                    "findings": 0,
+                }
+                payload = run_benchmark_suite()
+            finally:
+                benchmark_mod._benchmark_synthetic_artifact_detection = original
+
+            row = payload["results"]["synthetic_artifact_detection"]
+            self.assertFalse(row["passed"])
+            self.assertTrue(row["threshold_violations"])
+            self.assertFalse(payload["gate"]["gate_passed"])
+            reasons = payload["gate"]["gate_reasons"]
+            self.assertTrue(any("scenario_threshold_failures:" in r for r in reasons))
 
 
 if __name__ == "__main__":

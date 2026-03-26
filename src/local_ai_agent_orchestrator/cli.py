@@ -697,6 +697,11 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Report: {out}")
             print(f"History: {hist}")
             if not bool(payload.get("gate", {}).get("gate_passed", False)):
+                reasons = payload.get("gate", {}).get("gate_reasons", [])
+                if isinstance(reasons, list) and reasons:
+                    print("Gate reasons:")
+                    for reason in reasons:
+                        print(f"- {reason}")
                 raise SystemExit(2)
             return
         if cmd == "kpi":

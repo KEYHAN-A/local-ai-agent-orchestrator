@@ -14,6 +14,35 @@ from local_ai_agent_orchestrator.validators import (
     validate_files,
 )
 
+SCENARIO_THRESHOLDS: dict[str, dict] = {
+    "large_plan_preflight_small": {
+        "max_duration_ms": 4000.0,
+        "require_chunking_signal": True,
+    },
+    "large_plan_preflight_large": {
+        "max_duration_ms": 6000.0,
+        "require_chunking_signal": True,
+    },
+    "malformed_architect_output_object": {
+        "max_duration_ms": 1000.0,
+    },
+    "malformed_architect_output_bad_json": {
+        "max_duration_ms": 1000.0,
+    },
+    "synthetic_artifact_detection": {
+        "min_findings": 1,
+        "max_duration_ms": 2000.0,
+    },
+    "missing_symbol_leakage": {
+        "min_findings": 1,
+        "max_duration_ms": 2000.0,
+    },
+    "typescript_syntax_detection": {
+        "min_findings": 1,
+        "max_duration_ms": 2000.0,
+    },
+}
+
 
 def run_benchmark_suite(previous: dict | None = None) -> dict:
     s = get_settings()
@@ -34,6 +63,12 @@ def run_benchmark_suite(previous: dict | None = None) -> dict:
         row["duration_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
         row.setdefault("failure_class", None if row.get("passed") else "scenario_failure")
         row.setdefault("regression_hint", "Inspect scenario output and compare with previous baseline.")
+        threshold_violations = _evaluate_scenario_thresholds(name, row)
+        row["threshold_violations"] = threshold_violations
+        if threshold_violations:
+            row["passed"] = False
+            if not row.get("failure_class"):
+                row["failure_class"] = "scenario_threshold_violation"
         results[name] = row
     passed = sum(1 for v in results.values() if bool(v.get("passed")))
     total = len(results)
@@ -47,6 +82,19 @@ def run_benchmark_suite(previous: dict | None = None) -> dict:
     gate_ok = (pass_rate >= float(s.benchmark_min_pass_rate)) and (
         (not bool(s.benchmark_fail_on_regression)) or (len(regressions) == 0)
     )
+    gate_reasons: list[str] = []
+    if pass_rate < float(s.benchmark_min_pass_rate):
+        gate_reasons.append(
+            f"pass_rate_below_min:{round(pass_rate, 4)}<{float(s.benchmark_min_pass_rate):.4f}"
+        )
+    if bool(s.benchmark_fail_on_regression) and regressions:
+        gate_reasons.append(f"regressions_detected:{','.join(regressions)}")
+    scenario_threshold_failures = sorted(
+        [name for name, row in results.items() if row.get("threshold_violations")]
+    )
+    if scenario_threshold_failures:
+        gate_reasons.append(f"scenario_threshold_failures:{','.join(scenario_threshold_failures)}")
+        gate_ok = False
     return {
         "suite": "core_reliability",
         "passed": passed,
@@ -56,6 +104,7 @@ def run_benchmark_suite(previous: dict | None = None) -> dict:
             "min_pass_rate": float(s.benchmark_min_pass_rate),
             "fail_on_regression": bool(s.benchmark_fail_on_regression),
             "regressions": regressions,
+            "gate_reasons": gate_reasons,
             "gate_passed": gate_ok,
         },
         "results": results,
@@ -78,6 +127,7 @@ def _benchmark_large_plan_preflight(context_length: int, max_completion: int, bl
         "passed": passed,
         "chunk_count": int(pf.get("chunk_count", 0)),
         "fit": bool(pf.get("fit")),
+        "fallback_chain": list(pf.get("fallback_chain", [])),
         "failure_class": None if passed else "preflight_policy",
         "regression_hint": "Check preflight chunking policy and fallback chain contract.",
     }
@@ -157,4 +207,25 @@ def _benchmark_typescript_syntax_detection() -> dict:
             "failure_class": None if hit else "typescript_analyzer_coverage",
             "regression_hint": "Verify TypeScript analyzer registry and structural checks are active.",
         }
+
+
+def _evaluate_scenario_thresholds(name: str, row: dict) -> list[str]:
+    thresholds = SCENARIO_THRESHOLDS.get(name, {})
+    if not thresholds:
+        return []
+    violations: list[str] = []
+    max_duration_ms = thresholds.get("max_duration_ms")
+    if max_duration_ms is not None and float(row.get("duration_ms", 0.0)) > float(max_duration_ms):
+        violations.append(
+            f"duration_ms_exceeded:{float(row.get('duration_ms', 0.0)):.2f}>{float(max_duration_ms):.2f}"
+        )
+    min_findings = thresholds.get("min_findings")
+    if min_findings is not None and int(row.get("findings", 0)) < int(min_findings):
+        violations.append(f"findings_below_min:{int(row.get('findings', 0))}<{int(min_findings)}")
+    if bool(thresholds.get("require_chunking_signal")):
+        if int(row.get("chunk_count", 0)) < 1:
+            violations.append("chunk_count_missing")
+        if "fallback_chain" not in row:
+            violations.append("fallback_chain_missing")
+    return violations
 
