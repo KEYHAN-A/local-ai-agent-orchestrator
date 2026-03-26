@@ -2,6 +2,11 @@
 
 All notable changes to **Local AI Agent Orchestrator** are recorded here. For install and usage, see [README.md](README.md).
 
+## v2.3.0
+
+- **Release rollout:** publish preparation for `v2.3.0` with project metadata version bump and release packaging flow.
+- **Orchestrator baseline:** ships current LAO pipeline state as the next tagged version for distribution.
+
 ## v2.2.1
 
 - **Reviewer parsing robustness:** reviewer JSON validation now accepts markdown-fenced JSON and mixed-text wrappers, preventing false task rejection when verdict payloads are wrapped in JSON code fences.
