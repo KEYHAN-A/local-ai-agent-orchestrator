@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from local_ai_agent_orchestrator.consistency import run_consistency_checks
+from local_ai_agent_orchestrator.schema_lints import run_schema_lints, should_lint_file
 from local_ai_agent_orchestrator.settings import get_settings
 
 PLACEHOLDER_PATTERNS = (
@@ -35,9 +37,15 @@ def extract_written_files(coder_output: str) -> list[str]:
     return [p.strip() for p in m.group(1).split(",") if p.strip()]
 
 
-def validate_files(workspace: Path, file_paths: list[str]) -> list[Finding]:
+def validate_files(
+    workspace: Path,
+    file_paths: list[str],
+    on_validation_command_result=None,
+) -> list[Finding]:
     findings: list[Finding] = []
     plan_langs = infer_plan_languages(workspace)
+    total_markers = 0
+    total_chars = 0
     for rel in file_paths:
         p = (workspace / rel).resolve()
         if not p.exists():
@@ -54,20 +62,35 @@ def validate_files(workspace: Path, file_paths: list[str]) -> list[Finding]:
         if p.is_dir():
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
-        findings.extend(_placeholder_findings(rel, text))
+        f, markers = _placeholder_findings(rel, text)
+        total_markers += markers
+        total_chars += len(text)
+        findings.extend(f)
         findings.extend(_codable_findings(rel, text))
-        if p.name == "project.pbxproj":
-            findings.extend(_pbxproj_findings(rel, text))
+        if should_lint_file(p):
+            findings.extend(_from_dicts(run_schema_lints(rel, text)))
+        if p.suffix.lower() in {".proj", ".workspace"}:
+            findings.extend(_synthetic_project_graph_findings(rel, text))
+    findings.extend(_placeholder_ratio_findings(total_markers, total_chars))
     findings.extend(validate_cross_file_consistency(workspace, plan_langs))
-    findings.extend(run_optional_validation_commands(workspace, plan_langs))
+    findings.extend(_from_dicts(run_consistency_checks(workspace)))
+    findings.extend(
+        run_optional_validation_commands(
+            workspace,
+            plan_langs,
+            on_command_result=on_validation_command_result,
+        )
+    )
     return findings
 
 
-def _placeholder_findings(path: str, text: str) -> list[Finding]:
+def _placeholder_findings(path: str, text: str) -> tuple[list[Finding], int]:
     out: list[Finding] = []
     low = text.lower()
+    markers = 0
     for pat in PLACEHOLDER_PATTERNS:
         if re.search(pat, low, re.IGNORECASE):
+            markers += 1
             out.append(
                 Finding(
                     severity="major",
@@ -77,6 +100,47 @@ def _placeholder_findings(path: str, text: str) -> list[Finding]:
                     fix_hint="Replace placeholder logic with concrete implementation.",
                 )
             )
+    return out, markers
+
+
+def _placeholder_ratio_findings(total_markers: int, total_chars: int) -> list[Finding]:
+    if total_chars <= 0:
+        return []
+    try:
+        settings = get_settings()
+        max_per_kloc = settings.placeholder_max_markers_per_kloc
+        max_ratio = settings.placeholder_max_ratio
+    except RuntimeError:
+        max_per_kloc = 3.0
+        max_ratio = 0.02
+    kloc = max(0.001, total_chars / 4000.0)
+    markers_per_kloc = total_markers / kloc
+    marker_ratio = total_markers / max(1.0, total_chars / 100.0)
+    out: list[Finding] = []
+    if markers_per_kloc > max_per_kloc:
+        out.append(
+            Finding(
+                severity="major",
+                issue_class="placeholder_density",
+                message=(
+                    f"Placeholder density too high ({markers_per_kloc:.2f}/KLOC), "
+                    f"threshold is {max_per_kloc:.2f}."
+                ),
+                fix_hint="Regenerate affected files with concrete implementation details.",
+            )
+        )
+    if marker_ratio > max_ratio:
+        out.append(
+            Finding(
+                severity="major",
+                issue_class="placeholder_ratio",
+                message=(
+                    f"Placeholder ratio too high ({marker_ratio:.4f}), "
+                    f"threshold is {max_ratio:.4f}."
+                ),
+                fix_hint="Reduce scaffold text and complete implementation bodies.",
+            )
+        )
     return out
 
 
@@ -94,15 +158,15 @@ def _codable_findings(path: str, text: str) -> list[Finding]:
     return []
 
 
-def _pbxproj_findings(path: str, text: str) -> list[Finding]:
+def _synthetic_project_graph_findings(path: str, text: str) -> list[Finding]:
     out: list[Finding] = []
     if "..." in text:
         out.append(
             Finding(
                 severity="critical",
-                issue_class="synthetic_pbxproj",
+                issue_class="synthetic_project_graph",
                 file_path=path,
-                message="project.pbxproj appears synthetic (contains ellipsis placeholders).",
+                message="Project metadata file appears synthetic (contains ellipsis placeholders).",
                 fix_hint="Generate a real project graph and verify all references exist.",
             )
         )
@@ -181,22 +245,34 @@ def validate_cross_file_consistency(workspace: Path, plan_langs: set[str]) -> li
     return findings
 
 
-def run_optional_validation_commands(workspace: Path, plan_langs: set[str]) -> list[Finding]:
+def run_optional_validation_commands(
+    workspace: Path,
+    plan_langs: set[str],
+    on_command_result=None,
+) -> list[Finding]:
     try:
         settings = get_settings()
     except RuntimeError:
         return []
     findings: list[Finding] = []
-    # Explicit-only policy:
-    # do not auto-pick language/toolchain commands unless operator config specifies them.
-    default_build, default_lint = (None, None)
-    for kind, cmd in (
-        ("build", settings.validation_build_cmd or default_build),
-        ("lint", settings.validation_lint_cmd or default_lint),
-    ):
+    profile = settings.validation_profiles.get(
+        settings.validation_profile,
+        settings.validation_profiles.get("default", {"commands": []}),
+    )
+    cmd_rows: list[tuple[str, str]] = []
+    for row in profile.get("commands", []) or []:
+        if isinstance(row, dict) and row.get("command"):
+            cmd_rows.append((str(row.get("kind", "contract")), str(row["command"])))
+    if settings.validation_build_cmd:
+        cmd_rows.append(("build", settings.validation_build_cmd))
+    if settings.validation_lint_cmd:
+        cmd_rows.append(("lint", settings.validation_lint_cmd))
+    for kind, cmd in cmd_rows:
         if not cmd:
             continue
         rc, out = _run_cmd(cmd, workspace)
+        if callable(on_command_result):
+            on_command_result(kind=kind, command=cmd, return_code=rc, output=out)
         if rc != 0:
             findings.append(
                 Finding(
@@ -207,6 +283,21 @@ def run_optional_validation_commands(workspace: Path, plan_langs: set[str]) -> l
                 )
             )
     return findings
+
+
+def _from_dicts(rows: list[dict]) -> list[Finding]:
+    out: list[Finding] = []
+    for r in rows:
+        out.append(
+            Finding(
+                severity=str(r.get("severity", "minor")),
+                issue_class=str(r.get("issue_class", "validator_issue")),
+                message=str(r.get("message", "")),
+                file_path=r.get("file_path"),
+                fix_hint=r.get("fix_hint"),
+            )
+        )
+    return out
 
 
 def _run_cmd(command: str, cwd: Path) -> tuple[int, str]:
@@ -258,7 +349,7 @@ def score_plan_languages(text: str) -> dict[str, int]:
         "python": ("python", "fastapi", "django", "flask", "pydantic", "pytest"),
         "typescript": ("typescript", "tsx", "tsconfig", "type-safe", "nestjs", "next.js"),
         "javascript": ("javascript", "node.js", "node ", "express", "react", "vite"),
-        "swift": ("swift", "ios", "xcode", "swiftui", "uikit"),
+        "swift": ("swift", "swift package", "swiftpm", "codable", "async let"),
         "go": ("golang", "go ", "gin", "fiber", "go.mod"),
         "rust": ("rust", "cargo", "tokio", "actix", "rocket"),
         "java": ("java", "spring", "gradle", "maven", "jvm"),

@@ -14,6 +14,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -117,7 +118,7 @@ def _architect_max_tokens(planner_cfg, messages: list[dict]) -> int:
     ctx = planner_cfg.context_length
     utilization = get_settings().max_context_utilization
     target_ctx = int(ctx * utilization)
-    reserved = 256
+    reserved = get_settings().preflight_reserved_tokens
     headroom = target_ctx - prompt_est - reserved
     if headroom < 1024:
         raise ValueError(
@@ -135,6 +136,49 @@ def _architect_max_tokens(planner_cfg, messages: list[dict]) -> int:
             prompt_est,
         )
     return max_out
+
+
+def _split_plan_sections(plan_text: str) -> list[str]:
+    sections = [s.strip() for s in re.split(r"\n(?=#|\-\s|\d+\.)", plan_text) if s.strip()]
+    return sections or [plan_text]
+
+
+def preflight_plan_context(plan_text: str, context_length: int, max_completion: int) -> dict:
+    utilization = get_settings().max_context_utilization
+    reserved = get_settings().preflight_reserved_tokens
+    target_ctx = int(context_length * utilization)
+    sections = _split_plan_sections(plan_text)
+    chunks: list[str] = []
+    cur = ""
+
+    for section in sections:
+        candidate = f"{cur}\n\n{section}".strip() if cur else section
+        est = _estimate_chat_prompt_tokens(build_architect_messages(candidate))
+        if est + reserved + 1024 <= target_ctx:
+            cur = candidate
+            continue
+        if cur:
+            chunks.append(cur)
+            cur = section
+        else:
+            # A single section is too large; keep as standalone and let summary fallback handle it.
+            chunks.append(section)
+            cur = ""
+    if cur:
+        chunks.append(cur)
+
+    full_est = _estimate_chat_prompt_tokens(build_architect_messages(plan_text))
+    fit = (full_est + reserved + 1024) <= target_ctx
+    return {
+        "fit": fit,
+        "estimated_prompt_tokens": full_est,
+        "target_context_tokens": target_ctx,
+        "reserved_tokens": reserved,
+        "chunk_count": len(chunks),
+        "chunks": chunks,
+        "fallback_chain": ["split_sections", "summarize_then_decompose", "fail_fast"],
+        "max_completion_cap": min(max_completion, max(256, target_ctx - full_est - reserved)),
+    }
 
 
 def _get_client() -> OpenAI:
@@ -202,7 +246,9 @@ def architect_phase(
     model_key = mm.ensure_loaded("planner")
     client = _get_client()
 
-    chunks = _chunk_plan_for_architect(plan_text, cfg.context_length)
+    preflight = preflight_plan_context(plan_text, cfg.context_length, cfg.max_completion)
+    queue.set_plan_preflight(plan_id, {k: v for k, v in preflight.items() if k != "chunks"})
+    chunks = preflight["chunks"] or [plan_text]
     for idx, chunk in enumerate(chunks):
         queue.upsert_plan_chunk(plan_id, idx, chunk)
     start = time.time()
@@ -335,14 +381,46 @@ def _parse_architect_output(content: str) -> list[dict]:
         raise ValueError(f"Expected JSON array, got {type(tasks).__name__}")
 
     validated = []
-    for t in tasks:
+    for idx, t in enumerate(tasks):
+        _validate_architect_task_schema(t, idx)
         validated.append({
-            "title": str(t.get("title", "Untitled")),
-            "description": str(t.get("description", "")),
-            "file_paths": t.get("file_paths", []),
-            "dependencies": t.get("dependencies", []),
+            "title": str(t["title"]).strip(),
+            "description": str(t["description"]).strip(),
+            "file_paths": [str(p).strip() for p in t.get("file_paths", [])],
+            "dependencies": [str(d).strip() for d in t.get("dependencies", [])],
+            "phase": str(t.get("phase", "")).strip() or None,
+            "deliverable_ids": [str(d).strip() for d in t.get("deliverable_ids", [])],
         })
     return validated
+
+
+def _validate_architect_task_schema(task: object, idx: int) -> None:
+    if not isinstance(task, dict):
+        raise ValueError(f"Task[{idx}] must be an object, got {type(task).__name__}")
+
+    required = ("title", "description", "file_paths", "dependencies")
+    missing = [k for k in required if k not in task]
+    if missing:
+        raise ValueError(f"Task[{idx}] missing required keys: {', '.join(missing)}")
+
+    title = task.get("title")
+    desc = task.get("description")
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError(f"Task[{idx}] title must be a non-empty string")
+    if not isinstance(desc, str) or not desc.strip():
+        raise ValueError(f"Task[{idx}] description must be a non-empty string")
+
+    for key in ("file_paths", "dependencies", "deliverable_ids"):
+        value = task.get(key, [])
+        if not isinstance(value, list):
+            raise ValueError(f"Task[{idx}] {key} must be an array")
+        for j, item in enumerate(value):
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(f"Task[{idx}] {key}[{j}] must be a non-empty string")
+
+    phase = task.get("phase")
+    if phase is not None and (not isinstance(phase, str) or not phase.strip()):
+        raise ValueError(f"Task[{idx}] phase must be null or non-empty string")
 
 
 # ── Phase 2: Coder ───────────────────────────────────────────────────
@@ -520,23 +598,10 @@ def _coder_no_tools(
 
 
 def _chunk_plan_for_architect(plan_text: str, context_length: int) -> list[str]:
-    # Conservative char-based chunking to avoid context failures.
-    max_chars = max(3000, int(context_length * 2.2))
-    if len(plan_text) <= max_chars:
-        return [plan_text]
-    sections = re.split(r"\n(?=#|\-\s|\d+\.)", plan_text)
-    chunks: list[str] = []
-    cur = ""
-    for s in sections:
-        if len(cur) + len(s) + 1 <= max_chars:
-            cur = f"{cur}\n{s}".strip()
-            continue
-        if cur:
-            chunks.append(cur)
-        cur = s
-    if cur:
-        chunks.append(cur)
-    return chunks
+    # Legacy wrapper retained for compatibility; delegates to token-aware preflight policy.
+    return preflight_plan_context(
+        plan_text, context_length=context_length, max_completion=4096
+    ).get("chunks", [plan_text])
 
 
 # ── Phase 3: Reviewer ────────────────────────────────────────────────
@@ -577,7 +642,38 @@ def reviewer_phase(
     code_to_review = task.coder_output
     written_files = extract_written_files(code_to_review)
     queue.clear_findings(task.id)
-    validation_findings = validate_files(queue.workspace_for_plan(task.plan_id), written_files[:20])
+    validation_start = datetime.now(timezone.utc).isoformat()
+
+    def _on_cmd_result(kind: str, command: str, return_code: int, output: str):
+        queue.add_validation_run(
+            task.id,
+            kind=f"command:{kind}",
+            success=(return_code == 0),
+            command=command,
+            output=output[:4000] if output else None,
+            status="completed",
+            return_code=return_code,
+            started_at=None,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    validation_findings = validate_files(
+        queue.workspace_for_plan(task.plan_id),
+        written_files[:20],
+        on_validation_command_result=_on_cmd_result,
+    )
+    validation_end = datetime.now(timezone.utc).isoformat()
+    queue.add_validation_run(
+        task.id,
+        kind="validator:aggregate",
+        success=not any((f.severity or "").lower() in {"critical", "major"} for f in validation_findings),
+        command="validate_files",
+        output=f"findings={len(validation_findings)} files={len(written_files[:20])}",
+        status="completed",
+        return_code=0,
+        started_at=validation_start,
+        finished_at=validation_end,
+    )
     if validation_findings:
         for f in validation_findings:
             queue.add_finding(
@@ -589,13 +685,35 @@ def reviewer_phase(
                 file_path=f.file_path,
                 fix_hint=f.fix_hint,
             )
-        if get_settings().quality_gate_mode in ("standard", "strict"):
-            feedback = "\n".join(
-                f"- [{f.severity}] {f.issue_class}: {f.message}" for f in validation_findings
+            queue.add_validation_run(
+                task.id,
+                kind="validator",
+                success=(f.severity.lower() not in {"critical", "major"}),
+                command=f.issue_class,
+                output=f.message,
+                status="completed",
+                return_code=0,
+                started_at=validation_start,
+                finished_at=validation_end,
             )
-            queue.mark_rework(task.id, f"Validation gate failed:\n{feedback}")
-            log.info(f"[Reviewer] Validation gate rejected task #{task.id}")
-            return False
+        profile = get_settings().validation_profiles.get(
+            get_settings().validation_profile,
+            {"block_on_severities": ["critical", "major"]},
+        )
+        block_sev = {str(s).lower() for s in profile.get("block_on_severities", ["critical", "major"])}
+        if get_settings().quality_gate_mode in ("standard", "strict"):
+            blocking = [f for f in validation_findings if (f.severity or "").lower() in block_sev]
+            if not blocking and get_settings().quality_gate_mode == "standard":
+                blocking = []
+            if get_settings().quality_gate_mode == "strict":
+                blocking = validation_findings
+            if blocking:
+                feedback = "\n".join(
+                    f"- [{f.severity}] {f.issue_class}: {f.message}" for f in blocking
+                )
+                queue.mark_rework(task.id, f"Validation gate failed:\n{feedback}")
+                log.info(f"[Reviewer] Validation gate rejected task #{task.id}")
+                return False
     for path in written_files[:5]:
         content = file_read(path, max_lines=200)
         if not content.startswith("ERROR"):
@@ -639,6 +757,8 @@ def reviewer_phase(
         ws = queue.workspace_for_plan(task.plan_id)
         if approved:
             queue.mark_completed(task.id)
+            for did in task.deliverable_ids:
+                queue.set_deliverable_status(task.plan_id, did, "validated")
             log.info(f"[Reviewer] APPROVED task #{task.id} in {duration:.1f}s")
             plan_git.commit_after_reviewer(
                 ws, task.plan_id, task.id, task.title, "approved"
@@ -651,6 +771,8 @@ def reviewer_phase(
                     ws, task.plan_id, task.id, task.title, "failed"
                 )
             else:
+                for did in task.deliverable_ids:
+                    queue.set_deliverable_status(task.plan_id, did, "in_progress")
                 structured = "\n".join(
                     f"- [{f.severity}] {f.file_path or '-'} {f.issue_class}: {f.message}"
                     for f in reviewer_findings

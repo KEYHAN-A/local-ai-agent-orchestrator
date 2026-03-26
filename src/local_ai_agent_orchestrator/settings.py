@@ -102,6 +102,21 @@ class Settings:
     quality_gate_mode: str = "standard"
     validation_build_cmd: Optional[str] = None
     validation_lint_cmd: Optional[str] = None
+    validation_profile: str = "default"
+    validation_profiles: dict[str, dict[str, Any]] = field(
+        default_factory=lambda: {
+            "default": {
+                "commands": [],
+                "block_on_severities": ["critical", "major"],
+            }
+        }
+    )
+    placeholder_max_markers_per_kloc: float = 3.0
+    placeholder_max_ratio: float = 0.02
+    preflight_reserved_tokens: int = 256
+    execution_phase: Optional[str] = None
+    strict_adherence: bool = False
+    architect_only: bool = False
 
     memory_release_fraction: float = 0.75
     swap_growth_limit_mb: float = 512.0
@@ -267,7 +282,29 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 if orch.get("validation_lint_cmd") is not None
                 else base.validation_lint_cmd
             ),
+            validation_profile=str(orch.get("validation_profile", base.validation_profile)),
+            placeholder_max_markers_per_kloc=float(
+                orch.get(
+                    "placeholder_max_markers_per_kloc",
+                    base.placeholder_max_markers_per_kloc,
+                )
+            ),
+            placeholder_max_ratio=float(
+                orch.get("placeholder_max_ratio", base.placeholder_max_ratio)
+            ),
+            preflight_reserved_tokens=int(
+                orch.get("preflight_reserved_tokens", base.preflight_reserved_tokens)
+            ),
+            strict_adherence=bool(orch.get("strict_adherence", base.strict_adherence)),
         )
+        if isinstance(orch.get("validation_profiles"), dict):
+            profiles = {
+                str(k): v
+                for k, v in (orch.get("validation_profiles") or {}).items()
+                if isinstance(v, dict)
+            }
+            if profiles:
+                base = replace(base, validation_profiles=profiles)
 
     models_data = data.get("models")
     if models_data:

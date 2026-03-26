@@ -18,6 +18,7 @@ from local_ai_agent_orchestrator.model_manager import ModelManager
 from local_ai_agent_orchestrator.phases import (
     architect_phase,
     coder_phase,
+    preflight_plan_context,
     reviewer_phase,
 )
 from local_ai_agent_orchestrator.settings import get_settings
@@ -58,6 +59,7 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
             apply_runner_context(phase="Architect", plan=plan_file.name, task="Decomposing plan")
             try:
                 ws = queue.workspace_for_plan(plan_id)
+                _seed_plan_metadata(queue, plan_id, plan_text)
                 plan_git.snapshot_and_commit_plan(
                     ws,
                     plan_file.stem,
@@ -91,10 +93,11 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
 def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
     s = get_settings()
     processed = 0
+    phase_filter = (s.execution_phase or "").strip() or None
 
     while not _shutdown:
         if not s.phase_gated:
-            task = queue.next_pending()
+            task = queue.next_pending(phase_name=phase_filter)
             if task:
                 try:
                     with use_plan_workspace(queue, task.plan_id):
@@ -106,7 +109,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                         queue.mark_failed(task.id, str(e))
                     else:
                         queue.mark_rework(task.id, f"Coder error: {e}")
-                task = queue.next_coded()
+                task = queue.next_coded(phase_name=phase_filter)
                 if task:
                     try:
                         with use_plan_workspace(queue, task.plan_id):
@@ -120,7 +123,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                             queue.mark_rework(task.id, f"Reviewer error: {e}")
                 continue
 
-        batch = queue.next_pending_batch(limit=s.coder_batch_size)
+        batch = queue.next_pending_batch(limit=s.coder_batch_size, phase_name=phase_filter)
         for task in batch:
             log.info(f"{'─'*40}")
             log.info(
@@ -143,7 +146,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 else:
                     queue.mark_rework(task.id, f"Coder error: {e}")
 
-        task = queue.next_coded()
+        task = queue.next_coded(phase_name=phase_filter)
         reviewed = 0
         while task and reviewed < s.reviewer_batch_size:
             apply_runner_context(
@@ -162,7 +165,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 else:
                     queue.mark_rework(task.id, f"Reviewer error: {e}")
             reviewed += 1
-            task = queue.next_coded()
+            task = queue.next_coded(phase_name=phase_filter)
         if reviewed:
             continue
 
@@ -208,7 +211,59 @@ def load_specific_plan(path: str, queue: TaskQueue) -> tuple[Path, str, str]:
 
     plan_text = plan_file.read_text(encoding="utf-8")
     plan_id = queue.register_plan(plan_file.name, plan_text)
+    _seed_plan_metadata(queue, plan_id, plan_text)
     return plan_file, plan_text, plan_id
+
+
+def _seed_plan_metadata(queue: TaskQueue, plan_id: str, plan_text: str):
+    phase_rows = []
+    for idx, line in enumerate(plan_text.splitlines()):
+        m = line.strip()
+        if m.startswith("#") and "phase" in m.lower():
+            phase_rows.append((idx, m.lstrip("# ").strip()))
+    phase_names = [name for _, name in sorted(phase_rows, key=lambda x: x[0])]
+    if phase_names:
+        queue.upsert_plan_phases(plan_id, phase_names)
+
+    deliverables: list[dict] = []
+    for line in plan_text.splitlines():
+        m = line.strip()
+        if not m:
+            continue
+        did = None
+        mt = None
+        import re
+        mt = re.search(r"\b([A-Z]{2,}-\d+)\b", m)
+        if mt:
+            did = mt.group(1)
+        if did:
+            deliverables.append({"id": did, "description": m})
+    if deliverables:
+        queue.upsert_deliverables(plan_id, deliverables)
+
+
+def preflight_plan(path: str) -> bool:
+    s = get_settings()
+    plan_file = Path(path)
+    if not plan_file.exists():
+        plan_file = s.plans_dir / path
+    if not plan_file.exists():
+        log.error("Plan file not found: %s", path)
+        return False
+    plan_text = plan_file.read_text(encoding="utf-8")
+    planner = s.models["planner"]
+    result = preflight_plan_context(plan_text, planner.context_length, planner.max_completion)
+    log.info("Preflight for %s", plan_file.name)
+    log.info(
+        "fit=%s prompt_est=%s target_ctx=%s chunks=%s",
+        result["fit"],
+        result["estimated_prompt_tokens"],
+        result["target_context_tokens"],
+        result["chunk_count"],
+    )
+    if not result["fit"]:
+        log.warning("Plan exceeds single-pass planner context and will be chunked/fallback summarized.")
+    return True
 
 
 def _print_idle_status(queue: TaskQueue):
@@ -242,10 +297,13 @@ def _print_final_status(queue: TaskQueue):
 
 
 def _mark_terminal_plans_completed(queue: TaskQueue):
+    s = get_settings()
     for p in queue.get_plans():
         if p.get("status") == "completed":
             continue
-        if queue.is_plan_terminal(p["id"]):
+        if queue.is_plan_closure_satisfied(
+            p["id"], strict_adherence=bool(getattr(s, "strict_adherence", False))
+        ):
             queue.mark_plan_completed(p["id"])
 
 
@@ -430,6 +488,9 @@ def run_entry(
                 )
                 architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
 
+        if s.architect_only:
+            log.info("Architect-only mode enabled; skipping coder/reviewer processing.")
+            return True
         run_factory(mm, queue, single_run=single_run or bool(plan))
         return True
     finally:

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS plans (
     id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'decomposing',
+    preflight_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -57,6 +58,8 @@ CREATE TABLE IF NOT EXISTS micro_tasks (
     status TEXT NOT NULL DEFAULT 'pending',
     coder_output TEXT,
     reviewer_feedback TEXT,
+    phase_name TEXT,
+    deliverable_ids TEXT NOT NULL DEFAULT '[]',
     attempt INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
     priority INTEGER NOT NULL DEFAULT 0,
@@ -102,11 +105,46 @@ CREATE TABLE IF NOT EXISTS task_findings (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS plan_phases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id TEXT NOT NULL REFERENCES plans(id),
+    phase_name TEXT NOT NULL,
+    phase_index INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    UNIQUE(plan_id, phase_name)
+);
+
+CREATE TABLE IF NOT EXISTS plan_deliverables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id TEXT NOT NULL REFERENCES plans(id),
+    deliverable_id TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'not_started',
+    UNIQUE(plan_id, deliverable_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_validation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES micro_tasks(id),
+    kind TEXT NOT NULL,
+    command TEXT,
+    status TEXT NOT NULL DEFAULT 'completed',
+    return_code INTEGER,
+    success INTEGER NOT NULL,
+    output TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON micro_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_plan ON micro_tasks(plan_id);
 CREATE INDEX IF NOT EXISTS idx_runlog_task ON run_log(task_id);
 CREATE INDEX IF NOT EXISTS idx_plan_chunks_plan ON plan_chunks(plan_id);
 CREATE INDEX IF NOT EXISTS idx_task_findings_task ON task_findings(task_id);
+CREATE INDEX IF NOT EXISTS idx_plan_phases_plan ON plan_phases(plan_id);
+CREATE INDEX IF NOT EXISTS idx_deliverables_plan ON plan_deliverables(plan_id);
+CREATE INDEX IF NOT EXISTS idx_task_validation_runs_task ON task_validation_runs(task_id);
 """
 
 
@@ -121,6 +159,8 @@ class MicroTask:
     status: str = "pending"
     coder_output: Optional[str] = None
     reviewer_feedback: Optional[str] = None
+    phase_name: Optional[str] = None
+    deliverable_ids: list[str] = field(default_factory=list)
     attempt: int = 0
     max_attempts: int = 3
     priority: int = 0
@@ -139,6 +179,39 @@ class TaskQueue:
 
     def _init_schema(self):
         self._conn.executescript(SCHEMA)
+        self._run_migrations()
+
+    def _run_migrations(self):
+        cols = {
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(plans)").fetchall()
+        }
+        if "preflight_json" not in cols:
+            self._conn.execute("ALTER TABLE plans ADD COLUMN preflight_json TEXT")
+        task_cols = {
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(micro_tasks)").fetchall()
+        }
+        if "phase_name" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN phase_name TEXT")
+        if "deliverable_ids" not in task_cols:
+            self._conn.execute(
+                "ALTER TABLE micro_tasks ADD COLUMN deliverable_ids TEXT NOT NULL DEFAULT '[]'"
+            )
+        validation_cols = {
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(task_validation_runs)").fetchall()
+        }
+        if "status" not in validation_cols:
+            self._conn.execute(
+                "ALTER TABLE task_validation_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'"
+            )
+        if "return_code" not in validation_cols:
+            self._conn.execute("ALTER TABLE task_validation_runs ADD COLUMN return_code INTEGER")
+        if "started_at" not in validation_cols:
+            self._conn.execute("ALTER TABLE task_validation_runs ADD COLUMN started_at TEXT")
+        if "finished_at" not in validation_cols:
+            self._conn.execute("ALTER TABLE task_validation_runs ADD COLUMN finished_at TEXT")
 
     # ── Plan Management ──────────────────────────────────────────────
 
@@ -178,6 +251,23 @@ class TaskQueue:
             "UPDATE plans SET status = 'completed' WHERE id = ?", (plan_id,)
         )
 
+    def set_plan_preflight(self, plan_id: str, payload: dict):
+        self._conn.execute(
+            "UPDATE plans SET preflight_json=? WHERE id=?",
+            (json.dumps(payload), plan_id),
+        )
+
+    def get_plan_preflight(self, plan_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT preflight_json FROM plans WHERE id = ?", (plan_id,)
+        ).fetchone()
+        if not row or not row["preflight_json"]:
+            return None
+        try:
+            return json.loads(row["preflight_json"])
+        except Exception:
+            return None
+
     def is_plan_terminal(self, plan_id: str) -> bool:
         """
         A plan is terminal when all its tasks are either completed or failed.
@@ -185,6 +275,18 @@ class TaskQueue:
         row = self._conn.execute(
             """SELECT COUNT(*) as c FROM micro_tasks
                WHERE plan_id = ? AND status NOT IN ('completed', 'failed')""",
+            (plan_id,),
+        ).fetchone()
+        return bool(row) and int(row["c"]) == 0
+
+    def is_plan_closure_satisfied(self, plan_id: str, strict_adherence: bool = False) -> bool:
+        if not self.is_plan_terminal(plan_id):
+            return False
+        if not strict_adherence:
+            return True
+        row = self._conn.execute(
+            """SELECT COUNT(*) as c FROM plan_deliverables
+               WHERE plan_id = ? AND status != 'validated'""",
             (plan_id,),
         ).fetchone()
         return bool(row) and int(row["c"]) == 0
@@ -272,8 +374,8 @@ class TaskQueue:
                     )
                 self._conn.execute(
                     """INSERT INTO micro_tasks
-                       (plan_id, title, description, file_paths, dependencies, priority)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
+                       (plan_id, title, description, file_paths, dependencies, priority, phase_name, deliverable_ids)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         plan_id,
                         t["title"],
@@ -281,6 +383,8 @@ class TaskQueue:
                         json.dumps(t.get("file_paths", [])),
                         json.dumps(cleaned_deps),
                         i,
+                        (t.get("phase") or "").strip() or None,
+                        json.dumps(t.get("deliverable_ids", [])),
                     ),
                 )
             self._conn.execute("COMMIT")
@@ -289,14 +393,22 @@ class TaskQueue:
             self._conn.execute("ROLLBACK")
             raise
 
-    def next_pending(self) -> Optional[MicroTask]:
+    def next_pending(self, phase_name: str | None = None) -> Optional[MicroTask]:
         """Get the next task ready for coding (all dependencies satisfied)."""
         while True:
-            rows = self._conn.execute(
-                """SELECT * FROM micro_tasks
-                   WHERE status = 'pending'
-                   ORDER BY priority ASC, id ASC"""
-            ).fetchall()
+            if phase_name:
+                rows = self._conn.execute(
+                    """SELECT * FROM micro_tasks
+                       WHERE status = 'pending' AND phase_name = ?
+                       ORDER BY priority ASC, id ASC""",
+                    (phase_name,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT * FROM micro_tasks
+                       WHERE status = 'pending'
+                       ORDER BY priority ASC, id ASC"""
+                ).fetchall()
             if not rows:
                 return None
 
@@ -344,11 +456,11 @@ class TaskQueue:
             if not progressed:
                 return None
 
-    def next_pending_batch(self, limit: int = 4) -> list[MicroTask]:
+    def next_pending_batch(self, limit: int = 4, phase_name: str | None = None) -> list[MicroTask]:
         """Get a batch of runnable pending tasks with dependency checks."""
         out: list[MicroTask] = []
         while len(out) < max(1, limit):
-            task = self.next_pending()
+            task = self.next_pending(phase_name=phase_name)
             if not task:
                 break
             self.mark_coding(task.id)
@@ -357,14 +469,23 @@ class TaskQueue:
             self._update_status(t.id, "pending")
         return out
 
-    def next_coded(self) -> Optional[MicroTask]:
+    def next_coded(self, phase_name: str | None = None) -> Optional[MicroTask]:
         """Get the next task ready for review."""
-        row = self._conn.execute(
-            """SELECT * FROM micro_tasks
-               WHERE status = 'coded'
-               ORDER BY priority ASC, id ASC
-               LIMIT 1"""
-        ).fetchone()
+        if phase_name:
+            row = self._conn.execute(
+                """SELECT * FROM micro_tasks
+                   WHERE status = 'coded' AND phase_name = ?
+                   ORDER BY priority ASC, id ASC
+                   LIMIT 1""",
+                (phase_name,),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                """SELECT * FROM micro_tasks
+                   WHERE status = 'coded'
+                   ORDER BY priority ASC, id ASC
+                   LIMIT 1"""
+            ).fetchone()
         if row is None:
             return None
         return self._row_to_task(row)
@@ -481,7 +602,52 @@ class TaskQueue:
 
     def get_plans(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id, filename, status, created_at FROM plans ORDER BY created_at ASC"
+            "SELECT id, filename, status, preflight_json, created_at FROM plans ORDER BY created_at ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_plan_phases(self, plan_id: str, phases: list[str]):
+        self._conn.execute("DELETE FROM plan_phases WHERE plan_id = ?", (plan_id,))
+        for idx, phase_name in enumerate(phases):
+            self._conn.execute(
+                """INSERT INTO plan_phases (plan_id, phase_name, phase_index, status)
+                   VALUES (?, ?, ?, 'pending')""",
+                (plan_id, phase_name, idx),
+            )
+
+    def get_plan_phases(self, plan_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT phase_name, phase_index, status FROM plan_phases
+               WHERE plan_id=? ORDER BY phase_index ASC""",
+            (plan_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_deliverables(self, plan_id: str, items: list[dict]):
+        for it in items:
+            did = str(it.get("id", "")).strip()
+            if not did:
+                continue
+            self._conn.execute(
+                """INSERT INTO plan_deliverables (plan_id, deliverable_id, description, status)
+                   VALUES (?, ?, ?, 'not_started')
+                   ON CONFLICT(plan_id, deliverable_id)
+                   DO UPDATE SET description=excluded.description""",
+                (plan_id, did, str(it.get("description", "")).strip() or None),
+            )
+
+    def set_deliverable_status(self, plan_id: str, deliverable_id: str, status: str):
+        self._conn.execute(
+            """UPDATE plan_deliverables SET status=?
+               WHERE plan_id=? AND deliverable_id=?""",
+            (status, plan_id, deliverable_id),
+        )
+
+    def get_deliverables(self, plan_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT deliverable_id, description, status
+               FROM plan_deliverables WHERE plan_id=? ORDER BY deliverable_id ASC""",
+            (plan_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -548,6 +714,44 @@ class TaskQueue:
             (task_id, source, severity, file_path, issue_class, message, fix_hint),
         )
 
+    def add_validation_run(
+        self,
+        task_id: int,
+        kind: str,
+        success: bool,
+        command: str | None = None,
+        output: str | None = None,
+        *,
+        status: str = "completed",
+        return_code: int | None = None,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+    ):
+        self._conn.execute(
+            """INSERT INTO task_validation_runs
+               (task_id, kind, command, status, return_code, success, output, started_at, finished_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                task_id,
+                kind,
+                command,
+                status,
+                return_code,
+                int(success),
+                output,
+                started_at,
+                finished_at,
+            ),
+        )
+
+    def get_validation_runs(self, task_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT kind, command, status, return_code, success, output, started_at, finished_at, created_at
+               FROM task_validation_runs WHERE task_id=? ORDER BY id ASC""",
+            (task_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def clear_findings(self, task_id: int):
         self._conn.execute("DELETE FROM task_findings WHERE task_id = ?", (task_id,))
 
@@ -572,6 +776,8 @@ class TaskQueue:
             status=row["status"],
             coder_output=row["coder_output"],
             reviewer_feedback=row["reviewer_feedback"],
+            phase_name=row["phase_name"],
+            deliverable_ids=json.loads(row["deliverable_ids"] or "[]"),
             attempt=row["attempt"],
             max_attempts=row["max_attempts"],
             priority=row["priority"],

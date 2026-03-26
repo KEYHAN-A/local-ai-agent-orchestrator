@@ -99,6 +99,46 @@ class TestSchedulerAndChunks(unittest.TestCase):
             self.assertIn("Blocked by failed dependencies", by_title["B"].reviewer_feedback or "")
             q.close()
 
+    def test_next_coded_respects_phase_filter(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("Plan.md", "x")
+            q.add_tasks(
+                pid,
+                [
+                    {
+                        "title": "A",
+                        "description": "a",
+                        "file_paths": [],
+                        "dependencies": [],
+                        "phase": "Phase 1",
+                    },
+                    {
+                        "title": "B",
+                        "description": "b",
+                        "file_paths": [],
+                        "dependencies": [],
+                        "phase": "Phase 2",
+                    },
+                ],
+            )
+            tasks = q.get_plan_tasks(pid)
+            for t in tasks:
+                q.mark_coded(t.id, "coded")
+            p1 = q.next_coded(phase_name="Phase 1")
+            self.assertIsNotNone(p1)
+            self.assertEqual(p1.title, "A")
+            p2 = q.next_coded(phase_name="Phase 2")
+            self.assertIsNotNone(p2)
+            self.assertEqual(p2.title, "B")
+            q.close()
+
 
 if __name__ == "__main__":
     unittest.main()

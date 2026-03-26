@@ -88,6 +88,62 @@ class TestTaskQueueStateHelpers(unittest.TestCase):
             self.assertFalse(q.is_plan_terminal(pid))
             q.close()
 
+    def test_strict_plan_closure_requires_validated_deliverables(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("Plan.md", "REQ-1")
+            q.upsert_deliverables(pid, [{"id": "REQ-1", "description": "deliver"}])
+            q.add_tasks(
+                pid,
+                [{"title": "A", "description": "a", "file_paths": [], "dependencies": []}],
+            )
+            t = q.get_plan_tasks(pid)[0]
+            q.mark_completed(t.id)
+            self.assertTrue(q.is_plan_terminal(pid))
+            self.assertFalse(q.is_plan_closure_satisfied(pid, strict_adherence=True))
+            q.set_deliverable_status(pid, "REQ-1", "validated")
+            self.assertTrue(q.is_plan_closure_satisfied(pid, strict_adherence=True))
+            q.close()
+
+    def test_validation_run_records_lifecycle_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("Plan.md", "x")
+            q.add_tasks(
+                pid,
+                [{"title": "A", "description": "a", "file_paths": [], "dependencies": []}],
+            )
+            t = q.get_plan_tasks(pid)[0]
+            q.add_validation_run(
+                t.id,
+                kind="command:build",
+                success=False,
+                command="make build",
+                output="failed",
+                status="completed",
+                return_code=2,
+                started_at="2026-01-01T00:00:00+00:00",
+                finished_at="2026-01-01T00:00:05+00:00",
+            )
+            runs = q.get_validation_runs(t.id)
+            self.assertEqual(len(runs), 1)
+            self.assertEqual(runs[0]["return_code"], 2)
+            self.assertEqual(runs[0]["status"], "completed")
+            self.assertEqual(runs[0]["command"], "make build")
+            q.close()
+
 
 if __name__ == "__main__":
     unittest.main()
