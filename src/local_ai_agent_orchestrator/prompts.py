@@ -22,9 +22,11 @@ Rules:
 - Output ONLY a single valid JSON array. No markdown fences, no commentary before or after.
 - In JSON strings, escape double quotes as \\" and use \\n for newlines — invalid JSON will fail the pipeline.
 - Keep descriptions concise when the plan is large so the full array fits in one response.
+- Include `phase` when inferable from the plan section (for phase-gated execution).
+- Include `deliverable_ids` when the plan contains explicit requirement IDs (e.g. REQ-1).
 
 JSON schema for each task:
-{"title": "string", "description": "string", "file_paths": ["string"], "dependencies": ["string"]}"""
+{"title": "string", "description": "string", "file_paths": ["string"], "dependencies": ["string"], "phase": "string", "deliverable_ids": ["string"]}"""
 
 ARCHITECT_SUMMARY_SYSTEM = """You are a software architect assistant.
 Compress the input plan section into concise implementation requirements.

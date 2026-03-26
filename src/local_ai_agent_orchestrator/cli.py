@@ -55,6 +55,16 @@ def _write_example_config(dest: Path) -> None:
             "quality_gate_mode": "standard",
             "validation_build_cmd": None,
             "validation_lint_cmd": None,
+            "validation_profile": "default",
+            "validation_profiles": {
+                "default": {
+                    "commands": [],
+                    "block_on_severities": ["critical", "major"],
+                }
+            },
+            "placeholder_max_markers_per_kloc": 3.0,
+            "placeholder_max_ratio": 0.02,
+            "preflight_reserved_tokens": 256,
         },
         "git": {
             "enabled": True,
@@ -158,6 +168,16 @@ def _build_config_from_inputs(
             "quality_gate_mode": "standard",
             "validation_build_cmd": None,
             "validation_lint_cmd": None,
+            "validation_profile": "default",
+            "validation_profiles": {
+                "default": {
+                    "commands": [],
+                    "block_on_severities": ["critical", "major"],
+                }
+            },
+            "placeholder_max_markers_per_kloc": 3.0,
+            "placeholder_max_ratio": 0.02,
+            "preflight_reserved_tokens": 256,
         },
         "git": {
             "enabled": True,
@@ -496,10 +516,28 @@ def main(argv: list[str] | None = None) -> None:
         choices=["strict", "standard", "off"],
         help="Quality gate strictness",
     )
+    parser.add_argument(
+        "--plan-phase",
+        type=str,
+        default=None,
+        help="Execute only tasks belonging to a named phase",
+    )
+    parser.add_argument(
+        "--architect-only",
+        action="store_true",
+        help="Run architect decomposition only and stop before coding/review",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
     sub.add_parser("run", help="Run orchestrator")
+    preflight_p = sub.add_parser("preflight", help="Run plan context preflight diagnostics")
+    preflight_p.add_argument(
+        "--plan",
+        type=str,
+        required=True,
+        help="Plan file path (or file name inside plans directory)",
+    )
 
     sub.add_parser("status", help="Show task queue status")
     sub.add_parser("health", help="Check LM Studio and models")
@@ -572,6 +610,10 @@ def main(argv: list[str] | None = None) -> None:
             overrides["max_context_utilization"] = args.max_context_utilization
         if args.quality_gate is not None:
             overrides["quality_gate_mode"] = args.quality_gate
+        if args.plan_phase is not None:
+            overrides["execution_phase"] = args.plan_phase
+        if args.architect_only:
+            overrides["architect_only"] = True
 
         if args.command == "configure-models":
             raise SystemExit(_configure_models_interactive(cwd, cfg_path))
@@ -589,6 +631,11 @@ def main(argv: list[str] | None = None) -> None:
 
         if cmd == "status":
             runner.print_status(TaskQueue())
+            return
+        if cmd == "preflight":
+            ok = runner.preflight_plan(args.plan)
+            if not ok:
+                raise SystemExit(1)
             return
 
         if cmd == "health":

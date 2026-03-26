@@ -16,6 +16,21 @@ orchestration:
   llm_request_timeout_s: 300
   llm_retry_attempts: 3
   llm_retry_backoff_base_s: 5
+  phase_gated: true
+  coder_batch_size: 4
+  reviewer_batch_size: 6
+  max_context_utilization: 0.85
+  quality_gate_mode: standard
+  validation_build_cmd: null
+  validation_lint_cmd: null
+  validation_profile: default
+  validation_profiles:
+    default:
+      commands: []
+      block_on_severities: [critical, major]
+  placeholder_max_markers_per_kloc: 3.0
+  placeholder_max_ratio: 0.02
+  preflight_reserved_tokens: 256
 git:
   enabled: true
   plan_file_name: LAO_PLAN.md
