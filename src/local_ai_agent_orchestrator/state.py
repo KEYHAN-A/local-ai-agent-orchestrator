@@ -301,15 +301,25 @@ class TaskQueue:
         ).fetchone()
         return bool(row) and int(row["c"]) == 0
 
-    def is_plan_closure_satisfied(self, plan_id: str, strict_adherence: bool = False) -> bool:
+    def is_plan_closure_satisfied(
+        self,
+        plan_id: str,
+        strict_adherence: bool = False,
+        allowed_statuses: set[str] | None = None,
+    ) -> bool:
         if not self.is_plan_terminal(plan_id):
             return False
         if not strict_adherence:
             return True
+        allowed = {s.strip().lower() for s in (allowed_statuses or {"validated"}) if s.strip()}
+        if not allowed:
+            allowed = {"validated"}
         row = self._conn.execute(
             """SELECT COUNT(*) as c FROM plan_deliverables
-               WHERE plan_id = ? AND status != 'validated'""",
-            (plan_id,),
+               WHERE plan_id = ? AND lower(status) NOT IN ({})""".format(
+                ",".join("?" for _ in sorted(allowed))
+            ),
+            (plan_id, *sorted(allowed)),
         ).fetchone()
         return bool(row) and int(row["c"]) == 0
 

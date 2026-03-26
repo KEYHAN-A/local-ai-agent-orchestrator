@@ -38,6 +38,11 @@ def write_quality_report(
         )
     deliverables = queue.get_deliverables(plan_id)
     strict_adherence = bool(get_settings().strict_adherence)
+    strict_allowed = {
+        str(x).strip().lower()
+        for x in (get_settings().strict_closure_allowed_statuses or ["validated"])
+        if str(x).strip()
+    } or {"validated"}
     preflight = queue.get_plan_preflight(plan_id) or {}
     total_deliverables = len(deliverables)
     validated_deliverables = sum(1 for d in deliverables if d.get("status") == "validated")
@@ -79,9 +84,11 @@ def write_quality_report(
                 if not bool(r.get("success"))
             ),
             "strict_adherence_enabled": strict_adherence,
+            "strict_closure_allowed_statuses": sorted(strict_allowed),
             "closure_satisfied": queue.is_plan_closure_satisfied(
                 plan_id,
                 strict_adherence=strict_adherence,
+                allowed_statuses=strict_allowed,
             ),
             "unresolved_deliverables": unresolved_deliverables,
         },

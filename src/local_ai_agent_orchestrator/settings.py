@@ -116,6 +116,9 @@ class Settings:
     preflight_reserved_tokens: int = 256
     execution_phase: Optional[str] = None
     strict_adherence: bool = False
+    strict_closure_allowed_statuses: list[str] = field(
+        default_factory=lambda: ["validated"]
+    )
     architect_only: bool = False
 
     memory_release_fraction: float = 0.75
@@ -296,6 +299,17 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 orch.get("preflight_reserved_tokens", base.preflight_reserved_tokens)
             ),
             strict_adherence=bool(orch.get("strict_adherence", base.strict_adherence)),
+            strict_closure_allowed_statuses=[
+                str(x).strip().lower()
+                for x in (
+                    orch.get(
+                        "strict_closure_allowed_statuses",
+                        base.strict_closure_allowed_statuses,
+                    )
+                    or base.strict_closure_allowed_statuses
+                )
+                if str(x).strip()
+            ],
         )
         if isinstance(orch.get("validation_profiles"), dict):
             profiles = {

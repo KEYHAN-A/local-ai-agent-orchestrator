@@ -302,7 +302,9 @@ def _mark_terminal_plans_completed(queue: TaskQueue):
         if p.get("status") == "completed":
             continue
         if queue.is_plan_closure_satisfied(
-            p["id"], strict_adherence=bool(getattr(s, "strict_adherence", False))
+            p["id"],
+            strict_adherence=bool(getattr(s, "strict_adherence", False)),
+            allowed_statuses=set(getattr(s, "strict_closure_allowed_statuses", ["validated"])),
         ):
             queue.mark_plan_completed(p["id"])
 

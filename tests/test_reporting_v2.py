@@ -14,6 +14,9 @@ from local_ai_agent_orchestrator.state import TaskQueue
 MINIMAL_YAML = """
 lm_studio_base_url: "http://127.0.0.1:1234"
 openai_api_key: "lm-studio"
+orchestration:
+  strict_adherence: true
+  strict_closure_allowed_statuses: [validated, deferred]
 paths:
   plans: ./plans
   database: ./.lao/state.db
@@ -61,6 +64,10 @@ class TestReportingV2(unittest.TestCase):
             self.assertEqual(payload["traceability_summary"]["deliverables_validated"], 1)
             self.assertIn("closure_satisfied", payload["contracts"])
             self.assertEqual(payload["contracts"]["closure_satisfied"], True)
+            self.assertEqual(
+                payload["contracts"]["strict_closure_allowed_statuses"],
+                ["deferred", "validated"],
+            )
             q.close()
 
 
