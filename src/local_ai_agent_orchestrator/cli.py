@@ -71,6 +71,7 @@ def _write_example_config(dest: Path) -> None:
             "retry_cap_coder": 3,
             "retry_cap_reviewer": 3,
             "retry_cap_validation": 3,
+            "no_progress_repeat_limit": 2,
         },
         "git": {
             "enabled": True,
@@ -190,6 +191,7 @@ def _build_config_from_inputs(
             "retry_cap_coder": 3,
             "retry_cap_reviewer": 3,
             "retry_cap_validation": 3,
+            "no_progress_repeat_limit": 2,
         },
         "git": {
             "enabled": True,

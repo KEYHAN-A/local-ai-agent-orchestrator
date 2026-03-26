@@ -30,6 +30,7 @@ from local_ai_agent_orchestrator.prompts import (
     build_reviewer_messages,
 )
 from local_ai_agent_orchestrator.repair import build_repair_feedback
+from local_ai_agent_orchestrator.repair import is_no_progress_repeat
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import MicroTask, TaskQueue
 from local_ai_agent_orchestrator.tools import (
@@ -620,6 +621,7 @@ def reviewer_phase(
     cfg = get_settings().models["reviewer"]
     validation_cap = max(1, int(get_settings().retry_cap_validation))
     reviewer_cap = max(1, int(get_settings().retry_cap_reviewer))
+    no_progress_limit = max(1, int(get_settings().no_progress_repeat_limit))
     model_key = mm.ensure_loaded("reviewer")
     client = _get_client()
 
@@ -733,6 +735,13 @@ def reviewer_phase(
                         escalation_reason="repeated_validation_failure",
                     )
                     log.warning(f"[Reviewer] Validation gate failed task #{task.id} after retry cap")
+                elif is_no_progress_repeat(task.reviewer_feedback, feedback) and (task.attempt + 1) >= no_progress_limit:
+                    queue.mark_failed(
+                        task.id,
+                        f"No progress across retries for validation findings:\n{feedback}",
+                        escalation_reason="no_progress_rework_loop",
+                    )
+                    log.warning(f"[Reviewer] No-progress loop detected for task #{task.id}")
                 else:
                     queue.mark_rework(task.id, f"Validation gate failed:\n{feedback}")
                     log.info(f"[Reviewer] Validation gate rejected task #{task.id}")
@@ -808,8 +817,16 @@ def reviewer_phase(
                     contract_clause="Reviewer Contract",
                     summary_fallback=feedback,
                 )
-                queue.mark_rework(task.id, structured or feedback)
-                log.info(f"[Reviewer] REJECTED task #{task.id}: {feedback[:100]}...")
+                if is_no_progress_repeat(task.reviewer_feedback, structured) and (task.attempt + 1) >= no_progress_limit:
+                    queue.mark_failed(
+                        task.id,
+                        f"No progress across reviewer retries:\n{structured}",
+                        escalation_reason="no_progress_rework_loop",
+                    )
+                    log.warning(f"[Reviewer] No-progress reviewer loop detected for task #{task.id}")
+                else:
+                    queue.mark_rework(task.id, structured or feedback)
+                    log.info(f"[Reviewer] REJECTED task #{task.id}: {feedback[:100]}...")
                 plan_git.commit_after_reviewer(
                     ws, task.plan_id, task.id, task.title, "rejected"
                 )
