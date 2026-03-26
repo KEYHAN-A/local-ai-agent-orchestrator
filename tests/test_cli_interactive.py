@@ -34,9 +34,9 @@ class TestCliInteractiveHelpers(unittest.TestCase):
     def test_home_menu_quit_without_config(self):
         with tempfile.TemporaryDirectory() as td:
             cwd = Path(td)
-            with patch("local_ai_agent_orchestrator.cli.ui.ask_choice", return_value="5"):
+            with patch("local_ai_agent_orchestrator.cli.ui.ask_choice", return_value="6"):
                 choice = cli._home_menu(cwd, None)
-            self.assertEqual(choice, 5)
+            self.assertEqual(choice, 6)
 
     def test_configure_models_updates_file(self):
         with tempfile.TemporaryDirectory() as td:
@@ -62,7 +62,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             (cwd / ".lao").mkdir(parents=True, exist_ok=True)
             (cwd / "plans").mkdir(parents=True, exist_ok=True)
 
-            answers = iter(["planner-old", "coder-old", "reviewer-new", "embed-old"])
+            answers = iter(["planner-old", "coder-old", "reviewer-new", "embed-old", "planner-old"])
             with (
                 patch("local_ai_agent_orchestrator.model_manager.ModelManager", _FakeMM),
                 patch("local_ai_agent_orchestrator.cli.ui.ask_text", side_effect=lambda *_a, **_k: next(answers)),
@@ -111,12 +111,12 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             patch("local_ai_agent_orchestrator.cli.Path.home", return_value=Path("/Users/tester")),
             patch("local_ai_agent_orchestrator.cli._is_home_root", return_value=True),
             patch("local_ai_agent_orchestrator.cli.ui.print_warning") as warn,
-            patch("local_ai_agent_orchestrator.cli.ui.ask_choice", return_value="5") as choose,
+            patch("local_ai_agent_orchestrator.cli.ui.ask_choice", return_value="6") as choose,
         ):
             choice = cli._home_menu(Path("/Users/tester"), None)
-        self.assertEqual(choice, 5)
+        self.assertEqual(choice, 6)
         warn.assert_called_once()
-        self.assertEqual(choose.call_args.args[2], "5")
+        self.assertEqual(choose.call_args.args[2], "6")
 
     def test_main_version_flag_short(self):
         out = io.StringIO()
@@ -124,7 +124,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["-v"])
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("lao 2.3.1", out.getvalue())
+        self.assertIn("lao 3.0.0", out.getvalue())
 
     def test_main_version_flag_long(self):
         out = io.StringIO()
@@ -132,7 +132,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["--version"])
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("lao 2.3.1", out.getvalue())
+        self.assertIn("lao 3.0.0", out.getvalue())
 
 
 if __name__ == "__main__":

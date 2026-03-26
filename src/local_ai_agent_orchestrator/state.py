@@ -145,6 +145,15 @@ CREATE TABLE IF NOT EXISTS task_validation_runs (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS pilot_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tool_calls TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON micro_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_plan ON micro_tasks(plan_id);
 CREATE INDEX IF NOT EXISTS idx_runlog_task ON run_log(task_id);
@@ -153,6 +162,7 @@ CREATE INDEX IF NOT EXISTS idx_task_findings_task ON task_findings(task_id);
 CREATE INDEX IF NOT EXISTS idx_plan_phases_plan ON plan_phases(plan_id);
 CREATE INDEX IF NOT EXISTS idx_deliverables_plan ON plan_deliverables(plan_id);
 CREATE INDEX IF NOT EXISTS idx_task_validation_runs_task ON task_validation_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_pilot_session ON pilot_conversations(session_id);
 """
 
 
@@ -868,6 +878,54 @@ class TaskQueue:
             (task_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── Pilot Conversations ───────────────────────────────────────────
+
+    _pilot_session_id: str | None = None
+
+    def _ensure_pilot_session(self) -> str:
+        if self._pilot_session_id is None:
+            self._pilot_session_id = hashlib.sha256(
+                str(datetime.now(timezone.utc).isoformat()).encode()
+            ).hexdigest()[:12]
+        return self._pilot_session_id
+
+    def log_pilot_message(
+        self,
+        role: str,
+        content: str,
+        tool_calls: str | None = None,
+    ) -> None:
+        session = self._ensure_pilot_session()
+        self._conn.execute(
+            """INSERT INTO pilot_conversations (session_id, role, content, tool_calls)
+               VALUES (?, ?, ?, ?)""",
+            (session, role, content, tool_calls),
+        )
+
+    def get_pilot_history(self, limit: int = 50) -> list[dict]:
+        session = self._ensure_pilot_session()
+        rows = self._conn.execute(
+            """SELECT role, content, tool_calls, created_at
+               FROM pilot_conversations
+               WHERE session_id = ?
+               ORDER BY id DESC LIMIT ?""",
+            (session, limit),
+        ).fetchall()
+        result = [dict(r) for r in reversed(rows)]
+        return result
+
+    def clear_pilot_session(self) -> None:
+        if self._pilot_session_id:
+            self._conn.execute(
+                "DELETE FROM pilot_conversations WHERE session_id = ?",
+                (self._pilot_session_id,),
+            )
+        self._pilot_session_id = None
+
+    def start_new_pilot_session(self) -> str:
+        self._pilot_session_id = None
+        return self._ensure_pilot_session()
 
     # ── Helpers ──────────────────────────────────────────────────────
 

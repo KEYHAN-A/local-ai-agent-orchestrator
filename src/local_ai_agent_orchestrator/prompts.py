@@ -74,6 +74,32 @@ Respond with EXACTLY one JSON object:
 {"verdict":"APPROVED|REJECTED","findings":[{"severity":"critical|major|minor","file_path":"string","issue_class":"string","message":"string","fix_hint":"string"}],"summary":"string"}
 If approved, findings can be an empty array."""
 
+PILOT_SYSTEM = """You are the LAO Pilot — an interactive command agent for a local AI coding orchestrator.
+
+You have direct access to the project workspace and can execute tools on the user's behalf.
+The user is a developer who has been working with LAO's automated pipeline (planner → coder → reviewer).
+The pipeline is now idle and you are here to help the user with whatever they need next.
+
+Capabilities:
+- Read, write, and patch files in the project workspace
+- Run shell commands (build, test, lint, start servers, install deps, git, etc.)
+- Search the codebase semantically or by listing directories
+- Check the current pipeline status (task queue, failed tasks, plan progress)
+- Create new plans that feed back into the LAO autopilot pipeline
+- Retry failed tasks from the pipeline
+- Resume the autopilot pipeline when ready
+
+Guidelines:
+- Be concise and action-oriented. Prefer doing over explaining.
+- When the user asks to run or test the project, use shell_exec to do it directly.
+- When the user describes a new feature or change, ask clarifying questions if needed,
+  then either implement it directly (for small changes) or create a plan for the pipeline.
+- When creating plans for the pipeline, write well-structured markdown with clear sections,
+  goals, and implementation phases. The planner model will decompose it into micro-tasks.
+- Always read relevant files before modifying them.
+- Show the user what you did and what happened (command output, files changed, etc.).
+- If the user says "continue", "resume", or "go", signal the pipeline to resume autopilot."""
+
 
 # ── Message Builders ─────────────────────────────────────────────────
 
@@ -146,3 +172,22 @@ def build_reviewer_messages(
         {"role": "system", "content": REVIEWER_SYSTEM},
         {"role": "user", "content": content},
     ]
+
+
+def build_pilot_messages(
+    context_summary: str,
+    conversation_history: list[dict],
+) -> list[dict]:
+    """
+    Build messages for the pilot agent.
+
+    context_summary: workspace state, pipeline status, recent activity
+    conversation_history: prior user/assistant/tool messages from the session
+    """
+    system_content = PILOT_SYSTEM
+    if context_summary:
+        system_content += f"\n\n## Current Context\n{context_summary}"
+
+    messages: list[dict] = [{"role": "system", "content": system_content}]
+    messages.extend(conversation_history)
+    return messages

@@ -62,6 +62,14 @@ def _default_models() -> dict[str, ModelConfig]:
             size_bytes=84_106_624,
             description="Embedding model for semantic file search",
         ),
+        "pilot": ModelConfig(
+            key="qwen_qwen3.5-35b-a3b",
+            context_length=32768,
+            max_completion=16384,
+            supports_tools=True,
+            size_bytes=21_513_639_040,
+            description="Interactive pilot / command agent",
+        ),
     }
 
 
@@ -130,6 +138,8 @@ class Settings:
     benchmark_min_pass_rate: float = 0.85
     benchmark_fail_on_regression: bool = True
     architect_only: bool = False
+    pilot_mode_enabled: bool = True
+    pilot_context_lines: int = 50
 
     memory_release_fraction: float = 0.75
     swap_growth_limit_mb: float = 512.0
@@ -210,6 +220,7 @@ def init_settings(
             "coder": "coder",
             "reviewer": "reviewer",
             "embedder": "embedder",
+            "pilot": "pilot",
         }
         for cli_name, role in role_map.items():
             new_key = model_key_overrides.get(cli_name)
@@ -335,6 +346,8 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
             benchmark_fail_on_regression=bool(
                 orch.get("benchmark_fail_on_regression", base.benchmark_fail_on_regression)
             ),
+            pilot_mode_enabled=bool(orch.get("pilot_mode_enabled", base.pilot_mode_enabled)),
+            pilot_context_lines=int(orch.get("pilot_context_lines", base.pilot_context_lines)),
         )
         if isinstance(orch.get("validation_profiles"), dict):
             profiles = {

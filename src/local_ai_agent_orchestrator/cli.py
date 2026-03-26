@@ -78,6 +78,7 @@ def _write_example_config(dest: Path) -> None:
             "no_progress_repeat_limit": 2,
             "benchmark_min_pass_rate": 0.85,
             "benchmark_fail_on_regression": True,
+            "pilot_mode_enabled": True,
         },
         "git": {
             "enabled": True,
@@ -117,6 +118,14 @@ def _write_example_config(dest: Path) -> None:
                 "size_bytes": 84106624,
                 "description": "Embeddings for semantic search",
             },
+            "pilot": {
+                "key": "qwen_qwen3.5-35b-a3b",
+                "context_length": 32768,
+                "max_completion": 16384,
+                "supports_tools": True,
+                "size_bytes": 21513639040,
+                "description": "Interactive pilot / command agent",
+            },
         },
     }
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -132,18 +141,21 @@ def _default_model_profiles() -> dict[str, dict[str, str]]:
             "coder": "qwen2.5-coder-7b-instruct",
             "reviewer": "qwen2.5-7b-instruct",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
+            "pilot": "qwen2.5-7b-instruct",
         },
         "medium": {
             "planner": "qwen_qwen3.5-35b-a3b",
             "coder": "qwen/qwen3-coder-30b",
             "reviewer": "deepseek-r1-distill-qwen-32b",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
+            "pilot": "qwen_qwen3.5-35b-a3b",
         },
         "large": {
             "planner": "qwen_qwen3.5-35b-a3b",
             "coder": "qwen/qwen3-coder-30b",
             "reviewer": "deepseek/deepseek-r1",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
+            "pilot": "qwen_qwen3.5-35b-a3b",
         },
     }
 
@@ -203,6 +215,7 @@ def _build_config_from_inputs(
             "no_progress_repeat_limit": 2,
             "benchmark_min_pass_rate": 0.85,
             "benchmark_fail_on_regression": True,
+            "pilot_mode_enabled": True,
         },
         "git": {
             "enabled": True,
@@ -241,6 +254,14 @@ def _build_config_from_inputs(
                 "supports_tools": False,
                 "size_bytes": 84106624,
                 "description": "Embeddings for semantic search",
+            },
+            "pilot": {
+                "key": model_keys.get("pilot", model_keys["planner"]),
+                "context_length": 32768,
+                "max_completion": 16384,
+                "supports_tools": True,
+                "size_bytes": 21513639040,
+                "description": "Interactive pilot / command agent",
             },
         },
     }
@@ -302,6 +323,7 @@ def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
             ("coder", "Implement tasks and edit files"),
             ("reviewer", "Approve/reject with quality checks"),
             ("embedder", "Power semantic file retrieval"),
+            ("pilot", "Interactive chat agent when pipeline is idle"),
         ],
     )
 
@@ -317,7 +339,7 @@ def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
     if not ui.ask_yes_no("Use suggested model keys?", True):
         ui.print_section("Step 4/5 — Manual Model Keys")
         ui.print_info("Enter LM Studio model keys (`lms ls` can list keys).")
-        for role in ("planner", "coder", "reviewer", "embedder"):
+        for role in ("planner", "coder", "reviewer", "embedder", "pilot"):
             picked[role] = ui.ask_text(f"{role} model", picked[role])
 
     config = _build_config_from_inputs(
@@ -336,6 +358,7 @@ def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
             ("Coder", picked["coder"]),
             ("Reviewer", picked["reviewer"]),
             ("Embedder", picked["embedder"]),
+            ("Pilot", picked["pilot"]),
         ],
     )
     _write_yaml(cwd / "factory.yaml", config)
@@ -386,7 +409,7 @@ def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
     ui.print_section("Role Mapping")
     ui.print_info("Press Enter to keep a role unchanged.")
     changed: list[str] = []
-    for role in ("planner", "coder", "reviewer", "embedder"):
+    for role in ("planner", "coder", "reviewer", "embedder", "pilot"):
         role_cfg = (data.get("models") or {}).get(role) or {}
         cur = role_cfg.get("key", "")
         new_key = ui.ask_text(f"{role} model key", cur)
@@ -459,11 +482,12 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
             ("2", "run orchestrator"),
             ("3", "health check"),
             ("4", "configure model names"),
-            ("5", "Exit"),
+            ("5", "pilot mode (interactive chat)"),
+            ("6", "Exit"),
         ],
-        "5" if show_root_warning else ("1" if not has_config else "2"),
+        "6" if show_root_warning else ("1" if not has_config else "2"),
     )
-    return int(choice) if choice.isdigit() else 5
+    return int(choice) if choice.isdigit() else 6
 
 
 def _post_action_prompt(cwd: Path, config_path: Path, default: str = "run") -> None:
@@ -543,6 +567,7 @@ def main(argv: list[str] | None = None) -> None:
     global_opts.add_argument("--coder-model", dest="coder_model", default=None)
     global_opts.add_argument("--reviewer-model", dest="reviewer_model", default=None)
     global_opts.add_argument("--embedder-model", dest="embedder_model", default=None)
+    global_opts.add_argument("--pilot-model", dest="pilot_model", default=None)
     global_opts.add_argument(
         "--plan",
         type=str,
@@ -593,6 +618,16 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Run architect decomposition only and stop before coding/review",
     )
+    run_opts.add_argument(
+        "--no-pilot",
+        action="store_true",
+        help="Disable Pilot Mode (keep legacy watch behavior when idle)",
+    )
+    run_opts.add_argument(
+        "--pilot-only",
+        action="store_true",
+        help="Enter Pilot Mode immediately without running the pipeline",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
@@ -621,6 +656,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Path to quality report JSON (default: <config_dir>/quality_report.json)",
     )
+    sub.add_parser("pilot", help="Enter Pilot Mode (interactive chat agent)")
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
     sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
@@ -666,6 +702,8 @@ def main(argv: list[str] | None = None) -> None:
             elif action == 4:
                 args.command = "configure-models"
             elif action == 5:
+                args.command = "pilot"
+            elif action == 6:
                 return
             else:
                 args.command = "run"
@@ -683,6 +721,8 @@ def main(argv: list[str] | None = None) -> None:
             model_keys["reviewer"] = args.reviewer_model
         if args.embedder_model:
             model_keys["embedder"] = args.embedder_model
+        if args.pilot_model:
+            model_keys["pilot"] = args.pilot_model
 
         overrides = {}
         if args.lm_studio_base:
@@ -709,6 +749,8 @@ def main(argv: list[str] | None = None) -> None:
             overrides["execution_phase"] = args.plan_phase
         if args.architect_only:
             overrides["architect_only"] = True
+        if args.no_pilot:
+            overrides["pilot_mode_enabled"] = False
 
         if args.command == "configure-models":
             raise SystemExit(_configure_models_interactive(cwd, cfg_path))
@@ -844,6 +886,24 @@ def main(argv: list[str] | None = None) -> None:
             q = TaskQueue()
             reset_count = q.reset_failed_tasks()
             print(f"Reset {reset_count} failed tasks to pending.")
+            return
+
+        if cmd == "pilot" or args.pilot_only:
+            use_tui = sys.stdout.isatty() and not args.plain
+            from local_ai_agent_orchestrator.model_manager import ModelManager
+            from local_ai_agent_orchestrator.pilot_ui import enter_pilot_mode
+
+            mm = ModelManager()
+            if not mm.health_check():
+                print("LM Studio server is not reachable.", file=sys.stderr)
+                raise SystemExit(1)
+            q = TaskQueue()
+            result = enter_pilot_mode(mm, q, use_tui=use_tui)
+            from local_ai_agent_orchestrator.pilot import PilotResult
+            if result == PilotResult.RESUME_PIPELINE:
+                ok = runner.run_entry(plan=None, single_run=False, use_tui=use_tui)
+                if ok is False:
+                    raise SystemExit(1)
             return
 
         if cmd in (None, "run"):

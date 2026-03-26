@@ -49,7 +49,14 @@ def setup_signals():
     signal.signal(signal.SIGTERM, _signal_handler)
 
 
-def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
+def run_factory(
+    mm: ModelManager,
+    queue: TaskQueue,
+    single_run: bool = False,
+    *,
+    use_tui: bool = False,
+    dashboard: object | None = None,
+):
     s = get_settings()
     queue.recover_interrupted()
 
@@ -89,8 +96,17 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
         if not processed and not new_plans:
             if single_run:
                 break
-            _print_idle_status(queue)
-            interruptible_sleep(s.plan_watch_interval_s)
+            if s.pilot_mode_enabled:
+                result = _enter_pilot_mode(mm, queue, use_tui=use_tui, dashboard=dashboard)
+                from local_ai_agent_orchestrator.pilot import PilotResult
+                if result == PilotResult.EXIT:
+                    break
+                elif result == PilotResult.RESUME_PIPELINE:
+                    reset_interrupt_state()
+                    continue
+            else:
+                _print_idle_status(queue)
+                interruptible_sleep(s.plan_watch_interval_s)
 
     _print_final_status(queue)
 
@@ -275,6 +291,43 @@ def preflight_plan(path: str) -> bool:
     if not result["fit"]:
         log.warning("Plan exceeds single-pass planner context and will be chunked/fallback summarized.")
     return True
+
+
+def _enter_pilot_mode(
+    mm: ModelManager,
+    queue: TaskQueue,
+    *,
+    use_tui: bool = False,
+    dashboard: object | None = None,
+) -> "PilotResult":
+    """Transition from autopilot to pilot mode. Returns PilotResult."""
+    from local_ai_agent_orchestrator.pilot import PilotResult
+    from local_ai_agent_orchestrator.pilot_ui import enter_pilot_mode
+
+    if dashboard is not None:
+        dashboard.stop()
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    apply_runner_context(phase="Pilot", task="Interactive chat", idle_hint="")
+
+    try:
+        result = enter_pilot_mode(mm, queue, use_tui=use_tui)
+    except KeyboardInterrupt:
+        result = PilotResult.EXIT
+
+    if result == PilotResult.RESUME_PIPELINE and dashboard is not None:
+        root.handlers.clear()
+        dashboard.attach_logging()
+        dashboard.start()
+
+    return result
 
 
 def _print_idle_status(queue: TaskQueue):
@@ -505,7 +558,12 @@ def run_entry(
         if s.architect_only:
             log.info("Architect-only mode enabled; skipping coder/reviewer processing.")
             return True
-        run_factory(mm, queue, single_run=single_run or bool(plan))
+        run_factory(
+            mm, queue,
+            single_run=single_run or bool(plan),
+            use_tui=use_tui,
+            dashboard=dashboard,
+        )
         return True
     finally:
         if dashboard is not None and queue is not None:

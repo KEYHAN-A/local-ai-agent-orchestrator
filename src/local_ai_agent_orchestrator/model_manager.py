@@ -145,8 +145,12 @@ class ModelManager:
     def verify_models_exist(self) -> list[str]:
         """Check that all required models are downloaded. Returns list of missing keys."""
         available = set(self.get_available_models())
+        seen_keys: set[str] = set()
         missing = []
         for role, cfg in get_settings().models.items():
+            if cfg.key in seen_keys:
+                continue
+            seen_keys.add(cfg.key)
             if cfg.key not in available:
                 missing.append(f"{role}: {cfg.key}")
         return missing
