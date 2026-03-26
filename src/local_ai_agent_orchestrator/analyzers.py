@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import py_compile
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,8 @@ def _default_analyzers_for_suffix(suffix: str) -> list[AnalyzerFn]:
         return [_python_compile_analyzer]
     if suffix in {".ts", ".tsx"}:
         return [_typescript_structure_analyzer]
+    if suffix == ".json":
+        return [_json_structure_analyzer]
     return []
 
 
@@ -107,4 +110,23 @@ def _typescript_structure_analyzer(path: Path, text: str) -> list[AnalyzerResult
             )
         ]
     return []
+
+
+def _json_structure_analyzer(path: Path, text: str) -> list[AnalyzerResult]:
+    try:
+        json.loads(text)
+        return []
+    except Exception as e:
+        return [
+            AnalyzerResult(
+                severity="major",
+                issue_class="json_parse_error",
+                file_path=path.name,
+                message=f"JSON parse check failed: {e}",
+                fix_hint="Fix malformed JSON syntax (quotes, commas, brackets).",
+                analyzer_id="json_structure",
+                analyzer_kind="ast",
+                confidence=0.94,
+            )
+        ]
 

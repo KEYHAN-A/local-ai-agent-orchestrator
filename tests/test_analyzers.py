@@ -23,6 +23,16 @@ class TestAnalyzers(unittest.TestCase):
             rows = run_registered_analyzers(p, p.read_text(encoding="utf-8"))
             self.assertTrue(any(r.issue_class == "typescript_unbalanced_delimiters" for r in rows))
 
+    def test_json_structure_analyzer_reports_parse_errors(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "bad.json"
+            p.write_text('{"ok": true,,}', encoding="utf-8")
+            rows = run_registered_analyzers(p, p.read_text(encoding="utf-8"))
+            self.assertTrue(any(r.issue_class == "json_parse_error" for r in rows))
+            row = next(r for r in rows if r.issue_class == "json_parse_error")
+            self.assertEqual(row.analyzer_id, "json_structure")
+            self.assertEqual(row.analyzer_kind, "ast")
+
 
 if __name__ == "__main__":
     unittest.main()

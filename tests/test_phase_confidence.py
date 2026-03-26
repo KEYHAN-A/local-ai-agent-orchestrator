@@ -43,6 +43,22 @@ class TestPhaseConfidencePolicy(unittest.TestCase):
         }
         self.assertTrue(_finding_meets_block_confidence(f, profile))
 
+    def test_new_analyzer_id_policy_can_block_when_default_would_not(self):
+        f = Finding(
+            severity="major",
+            issue_class="json_parse_error",
+            message="m",
+            analyzer_id="json_structure",
+            analyzer_kind="ast",
+            confidence=0.7,
+        )
+        profile = {
+            "block_min_confidence": 0.8,
+            "block_min_confidence_by_analyzer_kind": {"ast": 0.9},
+            "block_min_confidence_by_analyzer_id": {"json_structure": 0.65},
+        }
+        self.assertTrue(_finding_meets_block_confidence(f, profile))
+
 
 if __name__ == "__main__":
     unittest.main()
