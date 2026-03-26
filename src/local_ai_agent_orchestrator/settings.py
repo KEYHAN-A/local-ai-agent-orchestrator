@@ -109,6 +109,8 @@ class Settings:
                 "commands": [],
                 "block_on_severities": ["critical", "major"],
                 "block_min_confidence": 0.6,
+                "block_min_confidence_by_analyzer_kind": {},
+                "block_min_confidence_by_analyzer_id": {},
             }
         }
     )

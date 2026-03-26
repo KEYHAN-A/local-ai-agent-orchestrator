@@ -16,6 +16,13 @@ class TestAnalyzers(unittest.TestCase):
             rows = run_registered_analyzers(p, p.read_text(encoding="utf-8"))
             self.assertTrue(any(r.issue_class == "python_compile_error" for r in rows))
 
+    def test_typescript_structure_analyzer_reports_unbalanced_delimiters(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "bad.ts"
+            p.write_text("export const x = { foo: [1, 2;\n", encoding="utf-8")
+            rows = run_registered_analyzers(p, p.read_text(encoding="utf-8"))
+            self.assertTrue(any(r.issue_class == "typescript_unbalanced_delimiters" for r in rows))
+
 
 if __name__ == "__main__":
     unittest.main()

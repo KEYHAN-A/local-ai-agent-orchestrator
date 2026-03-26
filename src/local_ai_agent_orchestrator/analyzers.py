@@ -33,6 +33,8 @@ def run_registered_analyzers(path: Path, text: str) -> list[AnalyzerResult]:
 def _default_analyzers_for_suffix(suffix: str) -> list[AnalyzerFn]:
     if suffix == ".py":
         return [_python_compile_analyzer]
+    if suffix in {".ts", ".tsx"}:
+        return [_typescript_structure_analyzer]
     return []
 
 
@@ -53,4 +55,56 @@ def _python_compile_analyzer(path: Path, text: str) -> list[AnalyzerResult]:
                 confidence=0.98,
             )
         ]
+
+
+def _typescript_structure_analyzer(path: Path, text: str) -> list[AnalyzerResult]:
+    # Lightweight AST-like structural check: balanced delimiters and no dangling template markers.
+    pairs = {"{": "}", "(": ")", "[": "]"}
+    closes = {v: k for k, v in pairs.items()}
+    stack: list[str] = []
+    for ch in text:
+        if ch in pairs:
+            stack.append(ch)
+        elif ch in closes:
+            if not stack or stack[-1] != closes[ch]:
+                return [
+                    AnalyzerResult(
+                        severity="major",
+                        issue_class="typescript_unbalanced_delimiters",
+                        file_path=path.name,
+                        message=f"Unbalanced delimiter found in {path.name}.",
+                        fix_hint="Fix mismatched braces/parentheses/brackets.",
+                        analyzer_id="typescript_structure",
+                        analyzer_kind="ast",
+                        confidence=0.84,
+                    )
+                ]
+            stack.pop()
+    if stack:
+        return [
+            AnalyzerResult(
+                severity="major",
+                issue_class="typescript_unbalanced_delimiters",
+                file_path=path.name,
+                message=f"Unclosed delimiter found in {path.name}.",
+                fix_hint="Close all opened braces/parentheses/brackets.",
+                analyzer_id="typescript_structure",
+                analyzer_kind="ast",
+                confidence=0.84,
+            )
+        ]
+    if text.count("${") > text.count("}"):
+        return [
+            AnalyzerResult(
+                severity="major",
+                issue_class="typescript_template_syntax",
+                file_path=path.name,
+                message=f"Template string interpolation appears malformed in {path.name}.",
+                fix_hint="Fix malformed `${...}` template interpolation blocks.",
+                analyzer_id="typescript_structure",
+                analyzer_kind="ast",
+                confidence=0.76,
+            )
+        ]
+    return []
 

@@ -60,6 +60,22 @@ def _strip_thinking_blocks(text: str) -> str:
     return text.strip()
 
 
+def _finding_meets_block_confidence(finding, profile: dict) -> bool:
+    default_min = float(profile.get("block_min_confidence", 0.6))
+    by_kind = {
+        str(k): float(v)
+        for k, v in (profile.get("block_min_confidence_by_analyzer_kind") or {}).items()
+    }
+    by_id = {
+        str(k): float(v)
+        for k, v in (profile.get("block_min_confidence_by_analyzer_id") or {}).items()
+    }
+    analyzer_id = str(getattr(finding, "analyzer_id", "") or "")
+    analyzer_kind = str(getattr(finding, "analyzer_kind", "") or "")
+    threshold = by_id.get(analyzer_id, by_kind.get(analyzer_kind, default_min))
+    return float(getattr(finding, "confidence", 0.0) or 0.0) >= float(threshold)
+
+
 def _estimate_chat_prompt_tokens(messages: list[dict]) -> int:
     """
     Approximate token count for architect/coder-style chat messages.
@@ -713,15 +729,19 @@ def reviewer_phase(
             )
         profile = get_settings().validation_profiles.get(
             get_settings().validation_profile,
-            {"block_on_severities": ["critical", "major"], "block_min_confidence": 0.6},
+            {
+                "block_on_severities": ["critical", "major"],
+                "block_min_confidence": 0.6,
+                "block_min_confidence_by_analyzer_kind": {},
+                "block_min_confidence_by_analyzer_id": {},
+            },
         )
         block_sev = {str(s).lower() for s in profile.get("block_on_severities", ["critical", "major"])}
-        block_min_conf = float(profile.get("block_min_confidence", 0.6))
         if get_settings().quality_gate_mode in ("standard", "strict"):
             blocking = [
                 f
                 for f in validation_findings
-                if (f.severity or "").lower() in block_sev and float(f.confidence or 0.0) >= block_min_conf
+                if (f.severity or "").lower() in block_sev and _finding_meets_block_confidence(f, profile)
             ]
             if not blocking and get_settings().quality_gate_mode == "standard":
                 blocking = []
