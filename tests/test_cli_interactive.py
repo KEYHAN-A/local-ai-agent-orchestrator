@@ -106,6 +106,18 @@ class TestCliInteractiveHelpers(unittest.TestCase):
     def test_main_blocks_init_at_root(self):
         self._assert_root_guard(["init"])
 
+    def test_home_menu_shows_warning_at_home_root(self):
+        with (
+            patch("local_ai_agent_orchestrator.cli.Path.home", return_value=Path("/Users/tester")),
+            patch("local_ai_agent_orchestrator.cli._is_home_root", return_value=True),
+            patch("local_ai_agent_orchestrator.cli.ui.print_warning") as warn,
+            patch("local_ai_agent_orchestrator.cli.ui.ask_choice", return_value="5") as choose,
+        ):
+            choice = cli._home_menu(Path("/Users/tester"), None)
+        self.assertEqual(choice, 5)
+        warn.assert_called_once()
+        self.assertEqual(choose.call_args.args[2], "5")
+
     def test_main_version_flag_short(self):
         out = io.StringIO()
         with redirect_stdout(out):

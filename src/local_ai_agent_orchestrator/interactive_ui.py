@@ -80,6 +80,20 @@ def print_note(message: str) -> None:
     )
 
 
+def print_warning(message: str) -> None:
+    if not is_tty():
+        print(f"WARNING: {message}")
+        return
+    _console.print(
+        Panel(
+            Text(message, style=D["WARNING_BRIGHT"]),
+            border_style=D["WARNING_BRIGHT"],
+            style=f"on {D['BG']}",
+            padding=(0, 1),
+        )
+    )
+
+
 def print_section(title: str) -> None:
     if not is_tty():
         print(f"\n{title}")

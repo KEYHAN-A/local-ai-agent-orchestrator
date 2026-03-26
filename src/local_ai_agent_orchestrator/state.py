@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS micro_tasks (
     status TEXT NOT NULL DEFAULT 'pending',
     coder_output TEXT,
     reviewer_feedback TEXT,
+    code_signature TEXT,
     phase_name TEXT,
     deliverable_ids TEXT NOT NULL DEFAULT '[]',
     attempt INTEGER NOT NULL DEFAULT 0,
@@ -166,6 +167,7 @@ class MicroTask:
     status: str = "pending"
     coder_output: Optional[str] = None
     reviewer_feedback: Optional[str] = None
+    code_signature: Optional[str] = None
     phase_name: Optional[str] = None
     deliverable_ids: list[str] = field(default_factory=list)
     attempt: int = 0
@@ -255,6 +257,8 @@ class TaskQueue:
             self._conn.execute("ALTER TABLE task_findings ADD COLUMN analyzer_kind TEXT")
         if "confidence" not in finding_cols:
             self._conn.execute("ALTER TABLE task_findings ADD COLUMN confidence REAL")
+        if "code_signature" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN code_signature TEXT")
 
     # ── Plan Management ──────────────────────────────────────────────
 
@@ -559,12 +563,12 @@ class TaskQueue:
     def mark_coding(self, task_id: int):
         self._update_status(task_id, "coding")
 
-    def mark_coded(self, task_id: int, coder_output: str):
+    def mark_coded(self, task_id: int, coder_output: str, code_signature: str | None = None):
         self._conn.execute(
             """UPDATE micro_tasks
-               SET status='coded', coder_output=?, updated_at=datetime('now')
+               SET status='coded', coder_output=?, code_signature=?, updated_at=datetime('now')
                WHERE id=?""",
-            (coder_output, task_id),
+            (coder_output, code_signature, task_id),
         )
 
     def mark_review(self, task_id: int):
@@ -878,6 +882,7 @@ class TaskQueue:
             status=row["status"],
             coder_output=row["coder_output"],
             reviewer_feedback=row["reviewer_feedback"],
+            code_signature=row["code_signature"],
             phase_name=row["phase_name"],
             deliverable_ids=json.loads(row["deliverable_ids"] or "[]"),
             attempt=row["attempt"],

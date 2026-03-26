@@ -110,8 +110,15 @@ def build_coder_messages(
         context_parts.append(f"\nTarget files: {', '.join(task.file_paths)}")
 
     if task.reviewer_feedback:
+        retry_guidance = """
+**IMPORTANT: This is a retry. Your previous attempt was rejected.**
+- Read the target files FIRST to see what was written before
+- Focus specifically on the issues mentioned in the feedback below
+- Make DIFFERENT changes than before - do not repeat the same approach
+- If the feedback mentions specific errors, address each one directly
+"""
         context_parts.append(
-            f"\n## Previous Review Feedback (fix these issues):\n{task.reviewer_feedback}"
+            f"\n## Previous Review Feedback (fix these issues):\n{task.reviewer_feedback}\n{retry_guidance}"
         )
 
     if relevant_files:

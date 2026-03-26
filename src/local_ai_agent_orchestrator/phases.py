@@ -30,7 +30,7 @@ from local_ai_agent_orchestrator.prompts import (
     build_coder_messages,
     build_reviewer_messages,
 )
-from local_ai_agent_orchestrator.repair import build_repair_feedback
+from local_ai_agent_orchestrator.repair import build_repair_feedback, compute_code_signature
 from local_ai_agent_orchestrator.repair import is_no_progress_repeat
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import MicroTask, TaskQueue
@@ -489,7 +489,11 @@ def coder_phase(
             output = _coder_no_tools(client, model_key, messages, cfg.max_completion)
 
         duration = time.time() - start
-        queue.mark_coded(task.id, output)
+
+        # Compute code signature for progress detection
+        workspace = queue.workspace_for_plan(task.plan_id)
+        code_sig = compute_code_signature(task.file_paths or [], str(workspace))
+        queue.mark_coded(task.id, output, code_signature=code_sig)
         queue.log_run(
             task_id=task.id, phase="coder", model_key=model_key,
             duration_seconds=duration, success=True,
@@ -757,6 +761,9 @@ def reviewer_phase(
                     contract_clause="Validation Contract",
                     summary_fallback="Validation gate failed.",
                 )
+                # Compute current code signature for accurate no-progress detection
+                ws = queue.workspace_for_plan(task.plan_id)
+                current_code_sig = compute_code_signature(task.file_paths or [], str(ws))
                 if task.attempt + 1 >= min(task.max_attempts, validation_cap):
                     queue.mark_failed(
                         task.id,
@@ -764,7 +771,10 @@ def reviewer_phase(
                         escalation_reason="repeated_validation_failure",
                     )
                     log.warning(f"[Reviewer] Validation gate failed task #{task.id} after retry cap")
-                elif is_no_progress_repeat(task.reviewer_feedback, feedback) and (task.attempt + 1) >= no_progress_limit:
+                elif is_no_progress_repeat(
+                    task.reviewer_feedback, feedback,
+                    prev_code_sig=task.code_signature, new_code_sig=current_code_sig
+                ) and (task.attempt + 1) >= no_progress_limit:
                     queue.mark_failed(
                         task.id,
                         f"No progress across retries for validation findings:\n{feedback}",
@@ -846,7 +856,12 @@ def reviewer_phase(
                     contract_clause="Reviewer Contract",
                     summary_fallback=feedback,
                 )
-                if is_no_progress_repeat(task.reviewer_feedback, structured) and (task.attempt + 1) >= no_progress_limit:
+                # Compute current code signature for accurate no-progress detection
+                current_code_sig = compute_code_signature(task.file_paths or [], str(ws))
+                if is_no_progress_repeat(
+                    task.reviewer_feedback, structured,
+                    prev_code_sig=task.code_signature, new_code_sig=current_code_sig
+                ) and (task.attempt + 1) >= no_progress_limit:
                     queue.mark_failed(
                         task.id,
                         f"No progress across reviewer retries:\n{structured}",

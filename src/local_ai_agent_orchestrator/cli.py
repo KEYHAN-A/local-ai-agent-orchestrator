@@ -259,6 +259,13 @@ def _is_filesystem_root(cwd: Path) -> bool:
     return resolved == Path(resolved.anchor)
 
 
+def _is_home_root(cwd: Path) -> bool:
+    try:
+        return cwd.resolve() == Path.home().resolve()
+    except Exception:
+        return False
+
+
 def _write_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -400,12 +407,18 @@ def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
 
 
 def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
+    show_root_warning = _is_home_root(cwd)
     ui.print_header(
         "Interactive Home",
-        "LAO is a local planner-coder-reviewer orchestration system for long-running coding workflows.\n"
+        "\nLAO is a local planner-coder-reviewer orchestration system for long-running coding workflows.\n"
         "Website: https://lao.keyhan.info\n\n"
         "Environment status and guided next actions...",
     )
+    if show_root_warning:
+        ui.print_warning(
+            "You are running LAO from your home directory root. "
+            "For safer and cleaner workflows, use a project folder or subdirectory."
+        )
     cfg = cfg_path or (cwd / "factory.yaml")
     has_config = cfg.is_file()
 
@@ -446,9 +459,9 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
             ("2", "run orchestrator"),
             ("3", "health check"),
             ("4", "configure model names"),
-            ("5", "quit"),
+            ("5", "Exit"),
         ],
-        "1" if not has_config else "2",
+        "5" if show_root_warning else ("1" if not has_config else "2"),
     )
     return int(choice) if choice.isdigit() else 5
 
@@ -629,11 +642,17 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if _is_filesystem_root(cwd):
             print(
-                "Warning: running `lao` from the filesystem root is not recommended. "
+                "Warning: running `lao` from filesystem root is not recommended. "
                 "Please run it inside a project folder or subdirectory.",
                 file=sys.stderr,
             )
             raise SystemExit(1)
+        if _is_home_root(cwd) and args.command is not None:
+            print(
+                "Warning: running `lao` from your home directory root is not recommended. "
+                "Consider using a project folder or subdirectory.",
+                file=sys.stderr,
+            )
 
         cfg_path = _resolve_config_path(cwd, args.config)
 
