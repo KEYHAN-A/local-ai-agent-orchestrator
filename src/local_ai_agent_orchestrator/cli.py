@@ -720,10 +720,20 @@ def main(argv: list[str] | None = None) -> None:
                 write_dashboard_snapshot,
             )
             from local_ai_agent_orchestrator.settings import get_settings
+            import json
 
             q = TaskQueue()
-            payload = build_dashboard_snapshot(q)
             ws = get_settings().config_dir
+            prev = None
+            hist_path = ws / "dashboard_history.json"
+            if hist_path.exists():
+                try:
+                    rows = json.loads(hist_path.read_text(encoding="utf-8"))
+                    if isinstance(rows, list) and rows:
+                        prev = rows[-1]
+                except Exception:
+                    prev = None
+            payload = build_dashboard_snapshot(q, previous=prev)
             out = write_dashboard_snapshot(ws, payload)
             hist = append_history_entry(ws, "dashboard_history.json", payload)
             print("Dashboard snapshot generated.")
