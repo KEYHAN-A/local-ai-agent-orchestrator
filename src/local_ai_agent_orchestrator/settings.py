@@ -108,6 +108,7 @@ class Settings:
             "default": {
                 "commands": [],
                 "block_on_severities": ["critical", "major"],
+                "block_min_confidence": 0.6,
             }
         }
     )

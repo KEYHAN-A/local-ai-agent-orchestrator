@@ -43,6 +43,7 @@ class TestValidators(unittest.TestCase):
             self.assertIn("placeholder_text", classes)
             self.assertTrue(all(isinstance(f.confidence, float) for f in findings))
             self.assertTrue(all(bool(f.analyzer_kind) for f in findings))
+            self.assertTrue(any(float(f.confidence) >= 0.6 for f in findings))
 
     def test_validate_reviewer_json(self):
         approved, findings, summary = validate_reviewer_json(

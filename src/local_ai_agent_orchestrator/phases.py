@@ -713,11 +713,16 @@ def reviewer_phase(
             )
         profile = get_settings().validation_profiles.get(
             get_settings().validation_profile,
-            {"block_on_severities": ["critical", "major"]},
+            {"block_on_severities": ["critical", "major"], "block_min_confidence": 0.6},
         )
         block_sev = {str(s).lower() for s in profile.get("block_on_severities", ["critical", "major"])}
+        block_min_conf = float(profile.get("block_min_confidence", 0.6))
         if get_settings().quality_gate_mode in ("standard", "strict"):
-            blocking = [f for f in validation_findings if (f.severity or "").lower() in block_sev]
+            blocking = [
+                f
+                for f in validation_findings
+                if (f.severity or "").lower() in block_sev and float(f.confidence or 0.0) >= block_min_conf
+            ]
             if not blocking and get_settings().quality_gate_mode == "standard":
                 blocking = []
             if get_settings().quality_gate_mode == "strict":

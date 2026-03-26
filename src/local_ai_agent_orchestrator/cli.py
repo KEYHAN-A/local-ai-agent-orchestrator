@@ -60,6 +60,7 @@ def _write_example_config(dest: Path) -> None:
                 "default": {
                     "commands": [],
                     "block_on_severities": ["critical", "major"],
+                    "block_min_confidence": 0.6,
                 }
             },
             "placeholder_max_markers_per_kloc": 3.0,
@@ -180,6 +181,7 @@ def _build_config_from_inputs(
                 "default": {
                     "commands": [],
                     "block_on_severities": ["critical", "major"],
+                    "block_min_confidence": 0.6,
                 }
             },
             "placeholder_max_markers_per_kloc": 3.0,
