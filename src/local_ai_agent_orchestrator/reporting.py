@@ -32,6 +32,8 @@ def write_quality_report(
                 "deliverable_ids": t.deliverable_ids,
                 "status": t.status,
                 "dependencies": t.dependencies,
+                "next_eligible_at": t.next_eligible_at,
+                "escalation_reason": t.escalation_reason,
                 "findings_count": len(findings.get(t.id, [])),
                 "validation_runs": validations.get(t.id, []),
             }
@@ -51,6 +53,11 @@ def write_quality_report(
     ]
     alignment_score = (validated_deliverables / total_deliverables) if total_deliverables else 1.0
     rework_loops = sum(int(t.attempt) for t in tasks)
+    escalated = [t for t in tasks if (t.escalation_reason or "").strip()]
+    escalation_counts: dict[str, int] = {}
+    for t in escalated:
+        key = (t.escalation_reason or "").strip()
+        escalation_counts[key] = escalation_counts.get(key, 0) + 1
 
     payload = {
         "plan_id": plan_id,
@@ -100,6 +107,8 @@ def write_quality_report(
         "convergence": {
             "rework_loops": rework_loops,
             "tasks_with_retries": sum(1 for t in tasks if int(t.attempt) > 0),
+            "escalated_tasks": len(escalated),
+            "escalation_reason_counts": escalation_counts,
         },
         "deliverables": deliverables,
         "efficiency": {

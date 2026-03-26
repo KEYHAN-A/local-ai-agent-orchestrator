@@ -772,7 +772,11 @@ def reviewer_phase(
             )
         else:
             if task.attempt + 1 >= task.max_attempts:
-                queue.mark_failed(task.id, f"Max attempts reached. Last feedback: {feedback}")
+                queue.mark_failed(
+                    task.id,
+                    f"Max attempts reached. Last feedback: {feedback}",
+                    escalation_reason="max_attempts_reached",
+                )
                 log.warning(f"[Reviewer] Task #{task.id} FAILED after {task.max_attempts} attempts")
                 plan_git.commit_after_reviewer(
                     ws, task.plan_id, task.id, task.title, "failed"

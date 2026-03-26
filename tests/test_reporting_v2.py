@@ -56,6 +56,7 @@ class TestReportingV2(unittest.TestCase):
             q.add_validation_run(t.id, kind="build", success=False, command="x", output="bad")
             q.mark_completed(t.id)
             q.set_deliverable_status(pid, "REQ-1", "validated")
+            q.mark_failed(t.id, "boom", escalation_reason="reviewer_exception")
             out = write_quality_report(q, pid)
             payload = json.loads(out.read_text(encoding="utf-8"))
             self.assertIn("preflight", payload)
@@ -68,6 +69,8 @@ class TestReportingV2(unittest.TestCase):
                 payload["contracts"]["strict_closure_allowed_statuses"],
                 ["deferred", "validated"],
             )
+            self.assertIn("escalation_reason_counts", payload["convergence"])
+            self.assertEqual(payload["convergence"]["escalation_reason_counts"]["reviewer_exception"], 1)
             q.close()
 
 

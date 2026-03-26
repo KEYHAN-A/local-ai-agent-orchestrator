@@ -97,6 +97,7 @@ class TestSchedulerAndChunks(unittest.TestCase):
             by_title = {t.title: t for t in tasks}
             self.assertEqual(by_title["B"].status, "failed")
             self.assertIn("Blocked by failed dependencies", by_title["B"].reviewer_feedback or "")
+            self.assertEqual(by_title["B"].escalation_reason, "dependency_blocked")
             q.close()
 
     def test_next_coded_respects_phase_filter(self):

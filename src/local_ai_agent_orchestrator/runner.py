@@ -106,7 +106,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 except Exception as e:
                     log.error(f"Coder failed on task #{task.id}: {e}")
                     if task.attempt + 1 >= task.max_attempts:
-                        queue.mark_failed(task.id, str(e))
+                        queue.mark_failed(task.id, str(e), escalation_reason="coder_exception")
                     else:
                         queue.mark_rework(task.id, f"Coder error: {e}")
                 task = queue.next_coded(phase_name=phase_filter)
@@ -118,7 +118,9 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                     except Exception as e:
                         log.error(f"Reviewer failed on task #{task.id}: {e}")
                         if task.attempt + 1 >= task.max_attempts:
-                            queue.mark_failed(task.id, f"Reviewer error: {e}")
+                            queue.mark_failed(
+                                task.id, f"Reviewer error: {e}", escalation_reason="reviewer_exception"
+                            )
                         else:
                             queue.mark_rework(task.id, f"Reviewer error: {e}")
                 continue
@@ -142,7 +144,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
             except Exception as e:
                 log.error(f"Coder failed on task #{task.id}: {e}")
                 if task.attempt + 1 >= task.max_attempts:
-                    queue.mark_failed(task.id, str(e))
+                    queue.mark_failed(task.id, str(e), escalation_reason="coder_exception")
                 else:
                     queue.mark_rework(task.id, f"Coder error: {e}")
 
@@ -161,7 +163,9 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
             except Exception as e:
                 log.error(f"Reviewer failed on task #{task.id}: {e}")
                 if task.attempt + 1 >= task.max_attempts:
-                    queue.mark_failed(task.id, f"Reviewer error: {e}")
+                    queue.mark_failed(
+                        task.id, f"Reviewer error: {e}", escalation_reason="reviewer_exception"
+                    )
                 else:
                     queue.mark_rework(task.id, f"Reviewer error: {e}")
             reviewed += 1

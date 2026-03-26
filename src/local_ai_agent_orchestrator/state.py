@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS micro_tasks (
     deliverable_ids TEXT NOT NULL DEFAULT '[]',
     attempt INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
+    next_eligible_at TEXT,
+    escalation_reason TEXT,
     priority INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -165,6 +167,8 @@ class MicroTask:
     deliverable_ids: list[str] = field(default_factory=list)
     attempt: int = 0
     max_attempts: int = 3
+    next_eligible_at: Optional[str] = None
+    escalation_reason: Optional[str] = None
     priority: int = 0
 
 
@@ -210,6 +214,10 @@ class TaskQueue:
             self._conn.execute(
                 "ALTER TABLE micro_tasks ADD COLUMN deliverable_ids TEXT NOT NULL DEFAULT '[]'"
             )
+        if "next_eligible_at" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN next_eligible_at TEXT")
+        if "escalation_reason" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN escalation_reason TEXT")
         validation_cols = {
             r["name"]
             for r in self._conn.execute("PRAGMA table_info(task_validation_runs)").fetchall()
@@ -432,6 +440,7 @@ class TaskQueue:
                 rows = self._conn.execute(
                     """SELECT * FROM micro_tasks
                        WHERE status = 'pending' AND phase_name = ?
+                         AND (next_eligible_at IS NULL OR datetime(next_eligible_at) <= datetime('now'))
                        ORDER BY priority ASC, id ASC""",
                     (phase_name,),
                 ).fetchall()
@@ -439,6 +448,7 @@ class TaskQueue:
                 rows = self._conn.execute(
                     """SELECT * FROM micro_tasks
                        WHERE status = 'pending'
+                         AND (next_eligible_at IS NULL OR datetime(next_eligible_at) <= datetime('now'))
                        ORDER BY priority ASC, id ASC"""
                 ).fetchall()
             if not rows:
@@ -473,6 +483,7 @@ class TaskQueue:
                     self.mark_failed(
                         row["id"],
                         "Blocked by failed dependencies: " + ", ".join(sorted(failed_deps)),
+                        escalation_reason="dependency_blocked",
                     )
                     log.warning(
                         "[State] Task #%s auto-failed due to failed dependencies: %s",
@@ -550,20 +561,28 @@ class TaskQueue:
         self._update_status(task_id, "completed")
 
     def mark_rework(self, task_id: int, feedback: str):
+        base = max(1, int(get_settings().retry_cooldown_base_s))
+        row = self._conn.execute(
+            "SELECT attempt FROM micro_tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        cur_attempt = int(row["attempt"]) if row else 0
+        cooldown_s = base * (2 ** cur_attempt)
         self._conn.execute(
             """UPDATE micro_tasks
                SET status='pending', reviewer_feedback=?, attempt=attempt+1,
+                   next_eligible_at=datetime('now', '+' || ? || ' seconds'),
                    updated_at=datetime('now')
                WHERE id=?""",
-            (feedback, task_id),
+            (feedback, cooldown_s, task_id),
         )
 
-    def mark_failed(self, task_id: int, error: str):
+    def mark_failed(self, task_id: int, error: str, escalation_reason: str | None = None):
         self._conn.execute(
             """UPDATE micro_tasks
-               SET status='failed', reviewer_feedback=?, updated_at=datetime('now')
+               SET status='failed', reviewer_feedback=?, escalation_reason=?, updated_at=datetime('now')
                WHERE id=?""",
-            (error, task_id),
+            (error, escalation_reason, task_id),
         )
 
     def _update_status(self, task_id: int, status: str):
@@ -620,14 +639,16 @@ class TaskQueue:
         if plan_id:
             cur = self._conn.execute(
                 """UPDATE micro_tasks
-                   SET status='pending', attempt=0, reviewer_feedback=NULL, updated_at=datetime('now')
+                   SET status='pending', attempt=0, reviewer_feedback=NULL,
+                       next_eligible_at=NULL, escalation_reason=NULL, updated_at=datetime('now')
                    WHERE status='failed' AND plan_id=?""",
                 (plan_id,),
             )
         else:
             cur = self._conn.execute(
                 """UPDATE micro_tasks
-                   SET status='pending', attempt=0, reviewer_feedback=NULL, updated_at=datetime('now')
+                   SET status='pending', attempt=0, reviewer_feedback=NULL,
+                       next_eligible_at=NULL, escalation_reason=NULL, updated_at=datetime('now')
                    WHERE status='failed'"""
             )
         return int(cur.rowcount or 0)
@@ -827,6 +848,8 @@ class TaskQueue:
             deliverable_ids=json.loads(row["deliverable_ids"] or "[]"),
             attempt=row["attempt"],
             max_attempts=row["max_attempts"],
+            next_eligible_at=row["next_eligible_at"],
+            escalation_reason=row["escalation_reason"],
             priority=row["priority"],
         )
 

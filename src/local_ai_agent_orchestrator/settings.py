@@ -119,6 +119,7 @@ class Settings:
     strict_closure_allowed_statuses: list[str] = field(
         default_factory=lambda: ["validated"]
     )
+    retry_cooldown_base_s: int = 30
     architect_only: bool = False
 
     memory_release_fraction: float = 0.75
@@ -310,6 +311,9 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 )
                 if str(x).strip()
             ],
+            retry_cooldown_base_s=int(
+                orch.get("retry_cooldown_base_s", base.retry_cooldown_base_s)
+            ),
         )
         if isinstance(orch.get("validation_profiles"), dict):
             profiles = {
