@@ -13,6 +13,7 @@ import logging
 import requests
 from typing import Optional
 
+from local_ai_agent_orchestrator.interrupts import interruptible_sleep, should_shutdown
 from local_ai_agent_orchestrator.settings import ModelConfig, get_settings
 
 log = logging.getLogger(__name__)
@@ -369,6 +370,8 @@ class ModelManager:
         )
 
         while True:
+            if should_shutdown():
+                raise KeyboardInterrupt("Shutdown requested during memory gate wait")
             available = self._get_available_memory_bytes()
             swap_now = self._get_swap_used_bytes()
             available_gb = available / 1024 ** 3
@@ -404,12 +407,14 @@ class ModelManager:
                 f"[MemoryGate] Waiting... available={available_gb:.1f}GB "
                 f"target={target_gb:.1f}GB swap_delta={swap_delta_mb:+.0f}MB"
             )
-            time.sleep(get_settings().memory_poll_interval_s)
+            interruptible_sleep(get_settings().memory_poll_interval_s)
             iteration += 1
 
     def _wait_until_loaded(self, model_key: str):
         deadline = time.time() + get_settings().model_load_timeout_s
         while time.time() < deadline:
+            if should_shutdown():
+                raise KeyboardInterrupt("Shutdown requested while waiting for model load")
             loaded = self._get_loaded_llms()
             # Check both exact match and substring match (LM Studio may append variant suffix)
             for lid in loaded:
@@ -421,7 +426,7 @@ class ModelManager:
                 if m.get("key") == model_key and m.get("loaded_instances"):
                     log.info(f"[ModelManager] Confirmed loaded via key: {model_key}")
                     return
-            time.sleep(get_settings().model_load_poll_interval_s)
+            interruptible_sleep(get_settings().model_load_poll_interval_s)
         raise ModelManagerError(
             f"Model {model_key} did not become ready within {get_settings().model_load_timeout_s}s"
         )

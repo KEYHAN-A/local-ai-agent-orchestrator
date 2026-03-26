@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from local_ai_agent_orchestrator import plan_git
+from local_ai_agent_orchestrator.interrupts import interruptible_sleep, should_shutdown
 
 from openai import OpenAI
 
@@ -229,6 +230,8 @@ def _llm_call(
 
     last_error = None
     for attempt in range(get_settings().llm_retry_attempts):
+        if should_shutdown():
+            raise KeyboardInterrupt("Shutdown requested")
         try:
             response = client.chat.completions.create(**kwargs)
             return response
@@ -239,7 +242,8 @@ def _llm_call(
                 f"[LLM] Attempt {attempt + 1}/{get_settings().llm_retry_attempts} failed: {e}. "
                 f"Retrying in {wait}s..."
             )
-            time.sleep(wait)
+            if not interruptible_sleep(wait):
+                raise KeyboardInterrupt("Shutdown requested during LLM retry backoff")
 
     raise RuntimeError(
         f"LLM call failed after {get_settings().llm_retry_attempts} attempts: {last_error}"

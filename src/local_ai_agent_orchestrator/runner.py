@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import logging
 import signal
-import time
 from pathlib import Path
 
 from local_ai_agent_orchestrator import plan_git
+from local_ai_agent_orchestrator.interrupts import (
+    interruptible_sleep,
+    register_interrupt,
+    reset_interrupt_state,
+    should_shutdown,
+)
 from local_ai_agent_orchestrator.model_manager import ModelManager
 from local_ai_agent_orchestrator.phases import (
     architect_phase,
@@ -30,13 +35,13 @@ log = logging.getLogger(__name__)
 
 from local_ai_agent_orchestrator.console_ui import apply_runner_context
 
-_shutdown = False
-
-
 def _signal_handler(sig, frame):
-    global _shutdown
-    log.info("\nShutdown requested. Finishing current task...")
-    _shutdown = True
+    count = register_interrupt()
+    if count <= 1:
+        log.info("\nShutdown requested. Finishing current task...")
+        return
+    log.warning("\nSecond interrupt received. Aborting immediately.")
+    raise KeyboardInterrupt
 
 
 def setup_signals():
@@ -48,10 +53,10 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
     s = get_settings()
     queue.recover_interrupted()
 
-    while not _shutdown:
+    while not should_shutdown():
         new_plans = _scan_for_new_plans(queue)
         for plan_file, plan_text, plan_id in new_plans:
-            if _shutdown:
+            if should_shutdown():
                 break
             log.info(f"{'='*60}")
             log.info(f"New plan: {plan_file.name}")
@@ -85,7 +90,7 @@ def run_factory(mm: ModelManager, queue: TaskQueue, single_run: bool = False):
             if single_run:
                 break
             _print_idle_status(queue)
-            time.sleep(s.plan_watch_interval_s)
+            interruptible_sleep(s.plan_watch_interval_s)
 
     _print_final_status(queue)
 
@@ -97,7 +102,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
     coder_cap = max(1, int(s.retry_cap_coder))
     reviewer_cap = max(1, int(s.retry_cap_reviewer))
 
-    while not _shutdown:
+    while not should_shutdown():
         if not s.phase_gated:
             task = queue.next_pending(phase_name=phase_filter)
             if task:
@@ -295,7 +300,7 @@ def _print_final_status(queue: TaskQueue):
         log.info(f"  {status:12s}: {count}")
     log.info(f"  Total tokens: {tokens['prompt_tokens'] + tokens['completion_tokens']:,}")
     log.info(f"{'='*60}")
-    if _shutdown:
+    if should_shutdown():
         log.info("Goodbye from LAO.")
         log.info("Continue this session later with: lao run")
         log.info("Need setup/model checks first? Run: lao")
@@ -402,6 +407,7 @@ def run_entry(
     use_tui: bool = False,
 ) -> bool:
     """Main entry after CLI parsed args and init_settings() ran."""
+    reset_interrupt_state()
     setup_signals()
     s = get_settings()
 
