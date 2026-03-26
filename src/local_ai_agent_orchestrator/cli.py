@@ -681,16 +681,21 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(2)
             return
         if cmd == "kpi":
+            from local_ai_agent_orchestrator.history import append_history_entry
             from local_ai_agent_orchestrator.kpi import build_kpi_snapshot, write_kpi_snapshot
             from local_ai_agent_orchestrator.settings import get_settings
 
             q = TaskQueue()
             payload = build_kpi_snapshot(q)
-            out = write_kpi_snapshot(get_settings().config_dir, payload)
+            ws = get_settings().config_dir
+            out = write_kpi_snapshot(ws, payload)
+            hist = append_history_entry(ws, "kpi_history.json", payload)
             print("KPI snapshot generated.")
             print(f"Report: {out}")
+            print(f"History: {hist}")
             return
         if cmd == "dashboard":
+            from local_ai_agent_orchestrator.history import append_history_entry
             from local_ai_agent_orchestrator.dashboards import (
                 build_dashboard_snapshot,
                 write_dashboard_snapshot,
@@ -699,9 +704,12 @@ def main(argv: list[str] | None = None) -> None:
 
             q = TaskQueue()
             payload = build_dashboard_snapshot(q)
-            out = write_dashboard_snapshot(get_settings().config_dir, payload)
+            ws = get_settings().config_dir
+            out = write_dashboard_snapshot(ws, payload)
+            hist = append_history_entry(ws, "dashboard_history.json", payload)
             print("Dashboard snapshot generated.")
             print(f"Report: {out}")
+            print(f"History: {hist}")
             return
 
         if cmd in ("retry-failed", "reset-failed"):
