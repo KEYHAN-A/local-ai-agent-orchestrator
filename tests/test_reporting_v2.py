@@ -54,6 +54,16 @@ class TestReportingV2(unittest.TestCase):
             )
             t = q.get_plan_tasks(pid)[0]
             q.add_validation_run(t.id, kind="build", success=False, command="x", output="bad")
+            q.add_finding(
+                t.id,
+                source="validator",
+                severity="major",
+                issue_class="x",
+                message="m",
+                analyzer_id="schema_lints",
+                analyzer_kind="heuristic",
+                confidence=0.8,
+            )
             q.mark_completed(t.id)
             q.set_deliverable_status(pid, "REQ-1", "validated")
             q.mark_failed(t.id, "boom", escalation_reason="reviewer_exception")
@@ -71,6 +81,8 @@ class TestReportingV2(unittest.TestCase):
             )
             self.assertIn("escalation_reason_counts", payload["convergence"])
             self.assertEqual(payload["convergence"]["escalation_reason_counts"]["reviewer_exception"], 1)
+            self.assertIn("analyzer_confidence_summary", payload["quality"])
+            self.assertEqual(payload["quality"]["analyzer_confidence_summary"]["heuristic"]["count"], 1)
             q.close()
 
 

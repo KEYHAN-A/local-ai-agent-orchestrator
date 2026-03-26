@@ -29,6 +29,9 @@ class Finding:
     message: str
     file_path: str | None = None
     fix_hint: str | None = None
+    analyzer_id: str = "builtin"
+    analyzer_kind: str = "heuristic"
+    confidence: float = 0.6
 
 
 def extract_written_files(coder_output: str) -> list[str]:
@@ -57,6 +60,9 @@ def validate_files(
                     file_path=rel,
                     message="File referenced by coder output does not exist.",
                     fix_hint="Write the file or remove it from coder summary.",
+                    analyzer_id="file_existence",
+                    analyzer_kind="runtime",
+                    confidence=0.99,
                 )
             )
             continue
@@ -99,6 +105,9 @@ def _placeholder_findings(path: str, text: str) -> tuple[list[Finding], int]:
                     file_path=path,
                     message=f"Detected placeholder marker matching /{pat}/.",
                     fix_hint="Replace placeholder logic with concrete implementation.",
+                    analyzer_id="placeholder_scan",
+                    analyzer_kind="heuristic",
+                    confidence=0.72,
                 )
             )
     return out, markers
@@ -128,6 +137,9 @@ def _placeholder_ratio_findings(total_markers: int, total_chars: int) -> list[Fi
                     f"threshold is {max_per_kloc:.2f}."
                 ),
                 fix_hint="Regenerate affected files with concrete implementation details.",
+                analyzer_id="placeholder_density",
+                analyzer_kind="heuristic",
+                confidence=0.78,
             )
         )
     if marker_ratio > max_ratio:
@@ -140,6 +152,9 @@ def _placeholder_ratio_findings(total_markers: int, total_chars: int) -> list[Fi
                     f"threshold is {max_ratio:.4f}."
                 ),
                 fix_hint="Reduce scaffold text and complete implementation bodies.",
+                analyzer_id="placeholder_density",
+                analyzer_kind="heuristic",
+                confidence=0.78,
             )
         )
     return out
@@ -154,6 +169,9 @@ def _codable_findings(path: str, text: str) -> list[Finding]:
                 file_path=path,
                 message="`[String: Any]` used in a Codable type.",
                 fix_hint="Use typed models, enum payloads, or a custom codable wrapper.",
+                analyzer_id="swift_codable_scan",
+                analyzer_kind="heuristic",
+                confidence=0.8,
             )
         ]
     return []
@@ -169,6 +187,9 @@ def _synthetic_project_graph_findings(path: str, text: str) -> list[Finding]:
                 file_path=path,
                 message="Project metadata file appears synthetic (contains ellipsis placeholders).",
                 fix_hint="Generate a real project graph and verify all references exist.",
+                analyzer_id="project_graph_scan",
+                analyzer_kind="heuristic",
+                confidence=0.9,
             )
         )
     return out
@@ -210,6 +231,9 @@ def validate_reviewer_json(text: str) -> tuple[bool, list[Finding], str]:
                 issue_class=str(item.get("issue_class", "review_issue")),
                 message=str(item.get("message", "")),
                 fix_hint=item.get("fix_hint"),
+                analyzer_id="reviewer_model",
+                analyzer_kind="llm",
+                confidence=0.65,
             )
         )
     blocking_severities = {"critical", "major", "blocker"}
@@ -241,6 +265,9 @@ def validate_cross_file_consistency(workspace: Path, plan_langs: set[str]) -> li
                         file_path=str(t.relative_to(workspace)),
                         message=f"Test references symbol '{m}' not found in scanned production symbols.",
                         fix_hint="Align tests with production names or add missing implementation.",
+                        analyzer_id="python_symbol_scan",
+                        analyzer_kind="heuristic",
+                        confidence=0.58,
                     )
                 )
     return findings
@@ -290,6 +317,9 @@ def run_optional_validation_commands(
                     issue_class=f"{kind}_command_failed",
                     message=f"Validation {kind} command failed: {cmd}",
                     fix_hint=(out[:400] if out else "Inspect command output and fix issues."),
+                    analyzer_id=f"command:{kind}",
+                    analyzer_kind="runtime",
+                    confidence=0.97,
                 )
             )
     return findings
@@ -305,6 +335,9 @@ def _from_dicts(rows: list[dict]) -> list[Finding]:
                 message=str(r.get("message", "")),
                 file_path=r.get("file_path"),
                 fix_hint=r.get("fix_hint"),
+                analyzer_id=str(r.get("analyzer_id", "external")),
+                analyzer_kind=str(r.get("analyzer_kind", "heuristic")),
+                confidence=float(r.get("confidence", 0.6)),
             )
         )
     return out

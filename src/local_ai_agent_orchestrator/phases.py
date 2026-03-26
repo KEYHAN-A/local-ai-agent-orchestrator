@@ -29,6 +29,7 @@ from local_ai_agent_orchestrator.prompts import (
     build_coder_messages,
     build_reviewer_messages,
 )
+from local_ai_agent_orchestrator.repair import build_repair_feedback
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import MicroTask, TaskQueue
 from local_ai_agent_orchestrator.tools import (
@@ -617,6 +618,8 @@ def reviewer_phase(
     Updates task state accordingly.
     """
     cfg = get_settings().models["reviewer"]
+    validation_cap = max(1, int(get_settings().retry_cap_validation))
+    reviewer_cap = max(1, int(get_settings().retry_cap_reviewer))
     model_key = mm.ensure_loaded("reviewer")
     client = _get_client()
 
@@ -702,6 +705,9 @@ def reviewer_phase(
                 message=f.message,
                 file_path=f.file_path,
                 fix_hint=f.fix_hint,
+                analyzer_id=f.analyzer_id,
+                analyzer_kind=f.analyzer_kind,
+                confidence=f.confidence,
             )
         profile = get_settings().validation_profiles.get(
             get_settings().validation_profile,
@@ -715,11 +721,21 @@ def reviewer_phase(
             if get_settings().quality_gate_mode == "strict":
                 blocking = validation_findings
             if blocking:
-                feedback = "\n".join(
-                    f"- [{f.severity}] {f.issue_class}: {f.message}" for f in blocking
+                feedback = build_repair_feedback(
+                    blocking,
+                    contract_clause="Validation Contract",
+                    summary_fallback="Validation gate failed.",
                 )
-                queue.mark_rework(task.id, f"Validation gate failed:\n{feedback}")
-                log.info(f"[Reviewer] Validation gate rejected task #{task.id}")
+                if task.attempt + 1 >= min(task.max_attempts, validation_cap):
+                    queue.mark_failed(
+                        task.id,
+                        f"Validation gate failed after retries:\n{feedback}",
+                        escalation_reason="repeated_validation_failure",
+                    )
+                    log.warning(f"[Reviewer] Validation gate failed task #{task.id} after retry cap")
+                else:
+                    queue.mark_rework(task.id, f"Validation gate failed:\n{feedback}")
+                    log.info(f"[Reviewer] Validation gate rejected task #{task.id}")
                 return False
     for path in written_files[:5]:
         content = file_read(path, max_lines=200)
@@ -758,6 +774,9 @@ def reviewer_phase(
                 message=f.message,
                 file_path=f.file_path,
                 fix_hint=f.fix_hint,
+                analyzer_id=f.analyzer_id,
+                analyzer_kind=f.analyzer_kind,
+                confidence=f.confidence,
             )
         feedback = summary or content
 
@@ -771,7 +790,7 @@ def reviewer_phase(
                 ws, task.plan_id, task.id, task.title, "approved"
             )
         else:
-            if task.attempt + 1 >= task.max_attempts:
+            if task.attempt + 1 >= min(task.max_attempts, reviewer_cap):
                 queue.mark_failed(
                     task.id,
                     f"Max attempts reached. Last feedback: {feedback}",
@@ -784,9 +803,10 @@ def reviewer_phase(
             else:
                 for did in task.deliverable_ids:
                     queue.set_deliverable_status(task.plan_id, did, "in_progress")
-                structured = "\n".join(
-                    f"- [{f.severity}] {f.file_path or '-'} {f.issue_class}: {f.message}"
-                    for f in reviewer_findings
+                structured = build_repair_feedback(
+                    reviewer_findings,
+                    contract_clause="Reviewer Contract",
+                    summary_fallback=feedback,
                 )
                 queue.mark_rework(task.id, structured or feedback)
                 log.info(f"[Reviewer] REJECTED task #{task.id}: {feedback[:100]}...")

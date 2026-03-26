@@ -58,6 +58,22 @@ def write_quality_report(
     for t in escalated:
         key = (t.escalation_reason or "").strip()
         escalation_counts[key] = escalation_counts.get(key, 0) + 1
+    analyzer_confidence: dict[str, list[float]] = {}
+    for rows in findings.values():
+        for f in rows:
+            key = str(f.get("analyzer_kind") or "unknown")
+            try:
+                val = float(f.get("confidence"))
+            except Exception:
+                continue
+            analyzer_confidence.setdefault(key, []).append(val)
+    analyzer_confidence_summary = {
+        k: {
+            "count": len(v),
+            "avg_confidence": round(sum(v) / len(v), 4) if v else 0.0,
+        }
+        for k, v in sorted(analyzer_confidence.items())
+    }
 
     payload = {
         "plan_id": plan_id,
@@ -80,6 +96,7 @@ def write_quality_report(
                 if str(f.get("issue_class", "")).startswith("referenced_")
                 or str(f.get("issue_class", "")).endswith("_mismatch")
             ),
+            "analyzer_confidence_summary": analyzer_confidence_summary,
         },
         "preflight": preflight,
         "contracts": {

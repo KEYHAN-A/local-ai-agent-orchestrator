@@ -41,6 +41,8 @@ class TestValidators(unittest.TestCase):
             classes = {f.issue_class for f in findings}
             self.assertIn("codable_any", classes)
             self.assertIn("placeholder_text", classes)
+            self.assertTrue(all(isinstance(f.confidence, float) for f in findings))
+            self.assertTrue(all(bool(f.analyzer_kind) for f in findings))
 
     def test_validate_reviewer_json(self):
         approved, findings, summary = validate_reviewer_json(

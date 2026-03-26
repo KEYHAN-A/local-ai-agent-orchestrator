@@ -104,6 +104,9 @@ CREATE TABLE IF NOT EXISTS task_findings (
     issue_class TEXT NOT NULL,
     message TEXT NOT NULL,
     fix_hint TEXT,
+    analyzer_id TEXT,
+    analyzer_kind TEXT,
+    confidence REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -242,6 +245,16 @@ class TaskQueue:
             self._conn.execute(
                 "ALTER TABLE plan_deliverables ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))"
             )
+        finding_cols = {
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(task_findings)").fetchall()
+        }
+        if "analyzer_id" not in finding_cols:
+            self._conn.execute("ALTER TABLE task_findings ADD COLUMN analyzer_id TEXT")
+        if "analyzer_kind" not in finding_cols:
+            self._conn.execute("ALTER TABLE task_findings ADD COLUMN analyzer_kind TEXT")
+        if "confidence" not in finding_cols:
+            self._conn.execute("ALTER TABLE task_findings ADD COLUMN confidence REAL")
 
     # ── Plan Management ──────────────────────────────────────────────
 
@@ -774,12 +787,26 @@ class TaskQueue:
         message: str,
         file_path: Optional[str] = None,
         fix_hint: Optional[str] = None,
+        analyzer_id: Optional[str] = None,
+        analyzer_kind: Optional[str] = None,
+        confidence: Optional[float] = None,
     ):
         self._conn.execute(
             """INSERT INTO task_findings
-               (task_id, source, severity, file_path, issue_class, message, fix_hint)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, source, severity, file_path, issue_class, message, fix_hint),
+               (task_id, source, severity, file_path, issue_class, message, fix_hint, analyzer_id, analyzer_kind, confidence)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                task_id,
+                source,
+                severity,
+                file_path,
+                issue_class,
+                message,
+                fix_hint,
+                analyzer_id,
+                analyzer_kind,
+                confidence,
+            ),
         )
 
     def add_validation_run(
@@ -825,7 +852,7 @@ class TaskQueue:
 
     def get_findings(self, task_id: int) -> list[dict]:
         rows = self._conn.execute(
-            """SELECT source, severity, file_path, issue_class, message, fix_hint
+            """SELECT source, severity, file_path, issue_class, message, fix_hint, analyzer_id, analyzer_kind, confidence
                FROM task_findings WHERE task_id = ? ORDER BY id ASC""",
             (task_id,),
         ).fetchall()

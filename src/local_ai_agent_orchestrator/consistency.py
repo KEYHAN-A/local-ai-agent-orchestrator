@@ -21,6 +21,9 @@ def run_consistency_checks(workspace: Path) -> list[dict]:
                         "file_path": rel,
                         "message": f"Referenced file path not found in workspace: {m}",
                         "fix_hint": "Create the referenced file or correct the path reference.",
+                        "analyzer_id": "cross_file_reference",
+                        "analyzer_kind": "heuristic",
+                        "confidence": 0.66,
                     }
                 )
     return findings

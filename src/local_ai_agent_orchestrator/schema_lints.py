@@ -21,6 +21,9 @@ def run_schema_lints(path: str, text: str) -> list[dict]:
                     "file_path": path,
                     "message": f"Detected risky untyped schema marker `{marker}`.",
                     "fix_hint": "Replace with typed models, tagged unions, or custom serialization wrappers.",
+                    "analyzer_id": "schema_lints",
+                    "analyzer_kind": "heuristic",
+                    "confidence": 0.82,
                 }
             )
     return out

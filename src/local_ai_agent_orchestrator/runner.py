@@ -94,6 +94,8 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
     s = get_settings()
     processed = 0
     phase_filter = (s.execution_phase or "").strip() or None
+    coder_cap = max(1, int(s.retry_cap_coder))
+    reviewer_cap = max(1, int(s.retry_cap_reviewer))
 
     while not _shutdown:
         if not s.phase_gated:
@@ -105,7 +107,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                     processed += 1
                 except Exception as e:
                     log.error(f"Coder failed on task #{task.id}: {e}")
-                    if task.attempt + 1 >= task.max_attempts:
+                    if task.attempt + 1 >= min(task.max_attempts, coder_cap):
                         queue.mark_failed(task.id, str(e), escalation_reason="coder_exception")
                     else:
                         queue.mark_rework(task.id, f"Coder error: {e}")
@@ -117,7 +119,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                         processed += 1
                     except Exception as e:
                         log.error(f"Reviewer failed on task #{task.id}: {e}")
-                        if task.attempt + 1 >= task.max_attempts:
+                        if task.attempt + 1 >= min(task.max_attempts, reviewer_cap):
                             queue.mark_failed(
                                 task.id, f"Reviewer error: {e}", escalation_reason="reviewer_exception"
                             )
@@ -143,7 +145,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 processed += 1
             except Exception as e:
                 log.error(f"Coder failed on task #{task.id}: {e}")
-                if task.attempt + 1 >= task.max_attempts:
+                if task.attempt + 1 >= min(task.max_attempts, coder_cap):
                     queue.mark_failed(task.id, str(e), escalation_reason="coder_exception")
                 else:
                     queue.mark_rework(task.id, f"Coder error: {e}")
@@ -162,7 +164,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 processed += 1
             except Exception as e:
                 log.error(f"Reviewer failed on task #{task.id}: {e}")
-                if task.attempt + 1 >= task.max_attempts:
+                if task.attempt + 1 >= min(task.max_attempts, reviewer_cap):
                     queue.mark_failed(
                         task.id, f"Reviewer error: {e}", escalation_reason="reviewer_exception"
                     )

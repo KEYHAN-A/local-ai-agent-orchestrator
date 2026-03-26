@@ -120,6 +120,9 @@ class Settings:
         default_factory=lambda: ["validated"]
     )
     retry_cooldown_base_s: int = 30
+    retry_cap_coder: int = 3
+    retry_cap_reviewer: int = 3
+    retry_cap_validation: int = 3
     architect_only: bool = False
 
     memory_release_fraction: float = 0.75
@@ -314,6 +317,9 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
             retry_cooldown_base_s=int(
                 orch.get("retry_cooldown_base_s", base.retry_cooldown_base_s)
             ),
+            retry_cap_coder=int(orch.get("retry_cap_coder", base.retry_cap_coder)),
+            retry_cap_reviewer=int(orch.get("retry_cap_reviewer", base.retry_cap_reviewer)),
+            retry_cap_validation=int(orch.get("retry_cap_validation", base.retry_cap_validation)),
         )
         if isinstance(orch.get("validation_profiles"), dict):
             profiles = {
