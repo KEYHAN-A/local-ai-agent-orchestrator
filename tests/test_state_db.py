@@ -144,6 +144,25 @@ class TestTaskQueueStateHelpers(unittest.TestCase):
             self.assertEqual(runs[0]["command"], "make build")
             q.close()
 
+    def test_deliverable_status_requires_reason_for_blocked_states(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("Plan.md", "REQ-1")
+            q.upsert_deliverables(pid, [{"id": "REQ-1", "description": "deliver"}])
+            with self.assertRaises(ValueError):
+                q.set_deliverable_status(pid, "REQ-1", "blocked")
+            q.set_deliverable_status(pid, "REQ-1", "blocked", reason="Dependency missing")
+            rows = q.get_deliverables(pid)
+            self.assertEqual(rows[0]["status"], "blocked")
+            self.assertEqual(rows[0]["status_reason"], "Dependency missing")
+            q.close()
+
 
 if __name__ == "__main__":
     unittest.main()

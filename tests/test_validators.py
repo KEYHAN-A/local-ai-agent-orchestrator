@@ -14,6 +14,7 @@ from local_ai_agent_orchestrator.validators import (
     infer_plan_languages,
     score_plan_languages,
     infer_languages_from_extensions,
+    run_optional_validation_commands,
 )
 
 
@@ -81,6 +82,31 @@ class TestValidators(unittest.TestCase):
             )
             findings = validate_cross_file_consistency(root, {"python"})
             self.assertTrue(any(f.issue_class == "test_symbol_mismatch" for f in findings))
+
+    def test_validation_profile_commands_are_executed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(
+                "\n".join(
+                    [
+                        "lm_studio_base_url: http://127.0.0.1:1234",
+                        "openai_api_key: lm-studio",
+                        "orchestration:",
+                        "  validation_profile: default",
+                        "  validation_profiles:",
+                        "    default:",
+                        "      commands:",
+                        "        - kind: build",
+                        "          command: \"python -c 'import sys; sys.exit(1)'\"",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            init_settings(config_path=cfg, cwd=root)
+            findings = run_optional_validation_commands(root, set())
+            self.assertTrue(any(f.issue_class == "build_command_failed" for f in findings))
 
     def test_infer_plan_languages_from_plan_snapshot(self):
         with tempfile.TemporaryDirectory() as td:

@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS plan_deliverables (
     deliverable_id TEXT NOT NULL,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'not_started',
+    status_reason TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(plan_id, deliverable_id)
 );
 
@@ -169,6 +171,16 @@ class MicroTask:
 class TaskQueue:
     """SQLite-backed persistent task queue with crash recovery."""
 
+    _ALLOWED_DELIVERABLE_STATUSES = {
+        "not_started",
+        "in_progress",
+        "validated",
+        "deferred",
+        "blocked",
+        "failed",
+        "partial",
+    }
+
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or get_settings().db_path
         self._conn = sqlite3.connect(str(self.db_path), isolation_level=None)
@@ -212,6 +224,16 @@ class TaskQueue:
             self._conn.execute("ALTER TABLE task_validation_runs ADD COLUMN started_at TEXT")
         if "finished_at" not in validation_cols:
             self._conn.execute("ALTER TABLE task_validation_runs ADD COLUMN finished_at TEXT")
+        deliverable_cols = {
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(plan_deliverables)").fetchall()
+        }
+        if "status_reason" not in deliverable_cols:
+            self._conn.execute("ALTER TABLE plan_deliverables ADD COLUMN status_reason TEXT")
+        if "updated_at" not in deliverable_cols:
+            self._conn.execute(
+                "ALTER TABLE plan_deliverables ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            )
 
     # ── Plan Management ──────────────────────────────────────────────
 
@@ -632,20 +654,35 @@ class TaskQueue:
                 """INSERT INTO plan_deliverables (plan_id, deliverable_id, description, status)
                    VALUES (?, ?, ?, 'not_started')
                    ON CONFLICT(plan_id, deliverable_id)
-                   DO UPDATE SET description=excluded.description""",
+                   DO UPDATE SET description=excluded.description, updated_at=datetime('now')""",
                 (plan_id, did, str(it.get("description", "")).strip() or None),
             )
 
-    def set_deliverable_status(self, plan_id: str, deliverable_id: str, status: str):
+    def set_deliverable_status(
+        self,
+        plan_id: str,
+        deliverable_id: str,
+        status: str,
+        reason: str | None = None,
+    ):
+        normalized = (status or "").strip().lower()
+        if normalized not in self._ALLOWED_DELIVERABLE_STATUSES:
+            raise ValueError(
+                f"Invalid deliverable status {status!r}. "
+                f"Allowed: {', '.join(sorted(self._ALLOWED_DELIVERABLE_STATUSES))}"
+            )
+        # Non-validated terminal risk states should carry explicit operator context.
+        if normalized in {"deferred", "blocked", "failed", "partial"} and not (reason or "").strip():
+            raise ValueError(f"Deliverable status '{normalized}' requires a non-empty reason.")
         self._conn.execute(
-            """UPDATE plan_deliverables SET status=?
+            """UPDATE plan_deliverables SET status=?, status_reason=?, updated_at=datetime('now')
                WHERE plan_id=? AND deliverable_id=?""",
-            (status, plan_id, deliverable_id),
+            (normalized, (reason or None), plan_id, deliverable_id),
         )
 
     def get_deliverables(self, plan_id: str) -> list[dict]:
         rows = self._conn.execute(
-            """SELECT deliverable_id, description, status
+            """SELECT deliverable_id, description, status, status_reason, updated_at
                FROM plan_deliverables WHERE plan_id=? ORDER BY deliverable_id ASC""",
             (plan_id,),
         ).fetchall()

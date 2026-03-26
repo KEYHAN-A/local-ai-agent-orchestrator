@@ -644,7 +644,25 @@ def reviewer_phase(
     queue.clear_findings(task.id)
     validation_start = datetime.now(timezone.utc).isoformat()
 
-    def _on_cmd_result(kind: str, command: str, return_code: int, output: str):
+    def _on_cmd_result(
+        kind: str,
+        command: str,
+        return_code: int,
+        output: str,
+        started_at: str,
+        finished_at: str,
+    ):
+        queue.add_validation_run(
+            task.id,
+            kind=f"command:{kind}",
+            success=(return_code == 0),
+            command=command,
+            output=None,
+            status="started",
+            return_code=None,
+            started_at=started_at,
+            finished_at=None,
+        )
         queue.add_validation_run(
             task.id,
             kind=f"command:{kind}",
@@ -653,8 +671,8 @@ def reviewer_phase(
             output=output[:4000] if output else None,
             status="completed",
             return_code=return_code,
-            started_at=None,
-            finished_at=datetime.now(timezone.utc).isoformat(),
+            started_at=started_at,
+            finished_at=finished_at,
         )
 
     validation_findings = validate_files(

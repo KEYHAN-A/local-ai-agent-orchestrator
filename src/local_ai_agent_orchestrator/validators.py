@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -270,9 +271,18 @@ def run_optional_validation_commands(
     for kind, cmd in cmd_rows:
         if not cmd:
             continue
+        started_at = datetime.now(timezone.utc).isoformat()
         rc, out = _run_cmd(cmd, workspace)
+        finished_at = datetime.now(timezone.utc).isoformat()
         if callable(on_command_result):
-            on_command_result(kind=kind, command=cmd, return_code=rc, output=out)
+            on_command_result(
+                kind=kind,
+                command=cmd,
+                return_code=rc,
+                output=out,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
         if rc != 0:
             findings.append(
                 Finding(
