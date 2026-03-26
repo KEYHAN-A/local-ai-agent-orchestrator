@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from local_ai_agent_orchestrator import __version__
 from local_ai_agent_orchestrator.branding import DISPLAY as D
 
 _console = Console(force_terminal=True)
@@ -23,14 +24,15 @@ def is_tty() -> bool:
 
 
 def print_header(title: str, subtitle: str | None = None) -> None:
+    branded_title = f"{title} (v{__version__})"
     if not is_tty():
-        print(title)
+        print(branded_title)
         if subtitle:
             print(subtitle)
         return
     text = Text()
     text.append(" LAO ", style=f"bold {D['AI_SPARK_BRIGHT']}")
-    text.append(title, style=f"bold {D['TEXT']}")
+    text.append(branded_title, style=f"bold {D['TEXT']}")
     if subtitle:
         text.append(f"\n{subtitle}", style=D["TEXT_MUTED"])
     _console.print(

@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-ai-agent-orchestrator"
-version = "2.3.0"
+version = "2.3.1"
 description = "Local AI Agent Orchestrator: planner, coder, and reviewer agents over LM Studio with SQLite state, optional per-plan Git commits, and memory-safe model swapping"
 readme = "README.md"
-license = { text = "GPL-3.0-only" }
+license = "GPL-3.0-only"
 requires-python = ">=3.10"
 authors = [{ name = "Local AI Agent Orchestrator contributors" }]
 keywords = ["llm", "lm-studio", "agents", "orchestration", "local-ai", "coding-agent"]
@@ -15,7 +15,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

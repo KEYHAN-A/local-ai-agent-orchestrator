@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -82,6 +84,43 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             )
             with patch("local_ai_agent_orchestrator.cli.ui.ask_choice", return_value="exit"):
                 cli._post_action_prompt(cwd, cfg, default="run")
+
+    def _assert_root_guard(self, argv: list[str]):
+        stderr = io.StringIO()
+        with (
+            patch("local_ai_agent_orchestrator.cli.Path.cwd", return_value=Path("/")),
+            redirect_stderr(stderr),
+        ):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(argv)
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("filesystem root", stderr.getvalue())
+        self.assertIn("project folder or subdirectory", stderr.getvalue())
+
+    def test_main_blocks_no_command_at_root(self):
+        self._assert_root_guard([])
+
+    def test_main_blocks_run_at_root(self):
+        self._assert_root_guard(["run"])
+
+    def test_main_blocks_init_at_root(self):
+        self._assert_root_guard(["init"])
+
+    def test_main_version_flag_short(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["-v"])
+        self.assertEqual(cm.exception.code, 0)
+        self.assertIn("lao 2.3.1", out.getvalue())
+
+    def test_main_version_flag_long(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["--version"])
+        self.assertEqual(cm.exception.code, 0)
+        self.assertIn("lao 2.3.1", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from local_ai_agent_orchestrator import __version__
 from local_ai_agent_orchestrator.branding import AUTHOR, DISPLAY as D, UPSTREAM_REPO
 
 _active_dashboard: Optional["RunDashboard"] = None
@@ -262,7 +263,7 @@ class RunDashboard:
 
         title = Text()
         title.append(" LAO ", style=f"bold {D['AI_SPARK_BRIGHT']}")
-        title.append(" Local AI Agent Orchestrator ", style=D["TEXT"])
+        title.append(f" Local AI Agent Orchestrator v{__version__} ", style=D["TEXT"])
         title.append("│ ", style=D["TEXT_MUTED"])
         title.append(phase, style=f"bold {D['AI_SPARK']}")
 

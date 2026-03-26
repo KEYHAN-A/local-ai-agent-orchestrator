@@ -13,6 +13,7 @@ from typing import Any
 
 import yaml
 
+from local_ai_agent_orchestrator import __version__
 from local_ai_agent_orchestrator import interactive_ui as ui
 from local_ai_agent_orchestrator.settings import init_settings
 from local_ai_agent_orchestrator.state import TaskQueue
@@ -253,6 +254,11 @@ def _resolve_config_path(cwd: Path, cli_config: Path | None) -> Path | None:
     return cfg_path
 
 
+def _is_filesystem_root(cwd: Path) -> bool:
+    resolved = cwd.resolve()
+    return resolved == Path(resolved.anchor)
+
+
 def _write_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -396,9 +402,9 @@ def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
 def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
     ui.print_header(
         "Interactive Home",
-        "Environment status and guided next actions.\n"
         "LAO is a local planner-coder-reviewer orchestration system for long-running coding workflows.\n"
-        "Website: https://lao.keyhan.info",
+        "Website: https://lao.keyhan.info\n\n"
+        "Environment status and guided next actions...",
     )
     cfg = cfg_path or (cwd / "factory.yaml")
     has_config = cfg.is_file()
@@ -476,77 +482,100 @@ def main(argv: list[str] | None = None) -> None:
 
     parser = argparse.ArgumentParser(
         prog="lao",
-        description="Local AI Agent Orchestrator -- LM Studio multi-agent coding pipeline",
+        description=(
+            "LAO: local planner-coder-reviewer orchestration for long-running coding workflows."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  lao\n"
+            "  lao run --single-run\n"
+            "  lao init --no-interactive\n"
+            "  lao health\n"
+            "  lao --version"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
+    global_opts = parser.add_argument_group("Global options")
+    global_opts.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
+    global_opts.add_argument(
         "--config",
         type=Path,
         default=None,
         help="Path to factory.yaml (default: ./factory.yaml if present)",
     )
-    parser.add_argument(
+    global_opts.add_argument(
         "--lm-studio-url",
         dest="lm_studio_base",
         default=os.getenv("LM_STUDIO_BASE_URL"),
         help="LM Studio base URL (overrides config / env)",
     )
-    parser.add_argument(
+    global_opts.add_argument(
         "--ram-gb",
         dest="total_ram_gb",
         type=float,
         default=None,
         help="Total system RAM in GB (logged / future tuning)",
     )
-    parser.add_argument("--workspace", type=Path, default=None, help="Workspace root path")
-    parser.add_argument("--plans-dir", type=Path, default=None, help="Plans directory")
-    parser.add_argument("--db", type=Path, dest="db_path", default=None, help="SQLite database path")
-    parser.add_argument("--planner-model", dest="planner_model", default=None)
-    parser.add_argument("--coder-model", dest="coder_model", default=None)
-    parser.add_argument("--reviewer-model", dest="reviewer_model", default=None)
-    parser.add_argument("--embedder-model", dest="embedder_model", default=None)
-    parser.add_argument(
+    global_opts.add_argument("--workspace", type=Path, default=None, help="Workspace root path")
+    global_opts.add_argument("--plans-dir", type=Path, default=None, help="Plans directory")
+    global_opts.add_argument(
+        "--db", type=Path, dest="db_path", default=None, help="SQLite database path"
+    )
+    global_opts.add_argument("--planner-model", dest="planner_model", default=None)
+    global_opts.add_argument("--coder-model", dest="coder_model", default=None)
+    global_opts.add_argument("--reviewer-model", dest="reviewer_model", default=None)
+    global_opts.add_argument("--embedder-model", dest="embedder_model", default=None)
+    global_opts.add_argument(
         "--plan",
         type=str,
         default=None,
         help="Process a specific plan file (with run)",
     )
-    parser.add_argument(
+    run_opts = parser.add_argument_group("Run behavior options")
+    run_opts.add_argument(
         "--single-run",
         action="store_true",
         help="Process queue once then exit",
     )
-    parser.add_argument(
+    run_opts.add_argument(
         "--plain",
         action="store_true",
         help="Classic scrolling log (no full-screen dashboard)",
     )
-    parser.add_argument(
+    run_opts.add_argument(
         "--no-git",
         action="store_true",
         help="Disable per-plan Git snapshots and phase commits (overrides factory.yaml)",
     )
-    parser.add_argument("--phase-gated", action="store_true", help="Enable role-batched phase execution")
-    parser.add_argument("--batch-size", type=int, default=None, help="Coder batch size per wave")
-    parser.add_argument(
+    run_opts.add_argument(
+        "--phase-gated", action="store_true", help="Enable role-batched phase execution"
+    )
+    run_opts.add_argument("--batch-size", type=int, default=None, help="Coder batch size per wave")
+    run_opts.add_argument(
         "--max-context-utilization",
         type=float,
         default=None,
         help="Planner target context utilization ratio (0-1)",
     )
-    parser.add_argument(
+    run_opts.add_argument(
         "--quality-gate",
         type=str,
         default=None,
         choices=["strict", "standard", "off"],
         help="Quality gate strictness",
     )
-    parser.add_argument(
+    run_opts.add_argument(
         "--plan-phase",
         type=str,
         default=None,
         help="Execute only tasks belonging to a named phase",
     )
-    parser.add_argument(
+    run_opts.add_argument(
         "--architect-only",
         action="store_true",
         help="Run architect decomposition only and stop before coding/review",
@@ -598,6 +627,14 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
+        if _is_filesystem_root(cwd):
+            print(
+                "Warning: running `lao` from the filesystem root is not recommended. "
+                "Please run it inside a project folder or subdirectory.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
         cfg_path = _resolve_config_path(cwd, args.config)
 
         if args.command is None and sys.stdout.isatty():
