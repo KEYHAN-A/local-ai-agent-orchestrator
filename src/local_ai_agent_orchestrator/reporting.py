@@ -11,6 +11,16 @@ from local_ai_agent_orchestrator.state import TaskQueue
 from local_ai_agent_orchestrator.validators import infer_plan_languages
 
 
+def _load_json_if_exists(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
 def write_quality_report(
     queue: TaskQueue, plan_id: str, model_metrics: dict[str, int] | None = None
 ) -> Path:
@@ -75,6 +85,37 @@ def write_quality_report(
         }
         for k, v in sorted(analyzer_confidence.items())
     }
+    benchmark_payload = _load_json_if_exists(ws / "benchmark_report.json")
+    kpi_payload = _load_json_if_exists(ws / "kpi_snapshot.json")
+    dashboard_payload = _load_json_if_exists(ws / "dashboard_snapshot.json")
+    observability = {
+        "benchmark_gate": (
+            {
+                "gate_passed": bool(benchmark_payload.get("gate", {}).get("gate_passed", False)),
+                "pass_rate": benchmark_payload.get("pass_rate"),
+                "gate_reasons": benchmark_payload.get("gate", {}).get("gate_reasons", []),
+            }
+            if benchmark_payload
+            else None
+        ),
+        "kpi_snapshot_ref": (
+            {
+                "plans_total": kpi_payload.get("plans_total"),
+                "plan_success_rate": kpi_payload.get("plan_success_rate"),
+            }
+            if kpi_payload
+            else None
+        ),
+        "dashboard_regression_summary": (
+            {
+                "failure_events_delta": dashboard_payload.get("deltas", {}).get("failure_events_delta"),
+                "failure_rate_delta": dashboard_payload.get("deltas", {}).get("failure_rate_delta"),
+                "regression_hints": dashboard_payload.get("regression_hints", []),
+            }
+            if dashboard_payload
+            else None
+        ),
+    }
 
     payload = {
         "report_meta": build_report_meta(),
@@ -123,6 +164,7 @@ def write_quality_report(
             "deliverables_validated": validated_deliverables,
             "architecture_alignment_score": round(alignment_score, 4),
         },
+        "observability": observability,
         "convergence": {
             "rework_loops": rework_loops,
             "tasks_with_retries": sum(1 for t in tasks if int(t.attempt) > 0),

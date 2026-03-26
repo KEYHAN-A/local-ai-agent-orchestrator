@@ -67,6 +67,29 @@ class TestReportingV2(unittest.TestCase):
             q.mark_completed(t.id)
             q.set_deliverable_status(pid, "REQ-1", "validated")
             q.mark_failed(t.id, "boom", escalation_reason="reviewer_exception")
+            ws = q.workspace_for_plan(pid)
+            (ws / "benchmark_report.json").write_text(
+                json.dumps(
+                    {
+                        "pass_rate": 0.86,
+                        "gate": {"gate_passed": False, "gate_reasons": ["regressions_detected:x"]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (ws / "kpi_snapshot.json").write_text(
+                json.dumps({"plans_total": 4, "plan_success_rate": 0.75}),
+                encoding="utf-8",
+            )
+            (ws / "dashboard_snapshot.json").write_text(
+                json.dumps(
+                    {
+                        "deltas": {"failure_events_delta": 2, "failure_rate_delta": 0.12},
+                        "regression_hints": ["Failure events increased"],
+                    }
+                ),
+                encoding="utf-8",
+            )
             out = write_quality_report(q, pid)
             payload = json.loads(out.read_text(encoding="utf-8"))
             self.assertIn("report_meta", payload)
@@ -85,6 +108,13 @@ class TestReportingV2(unittest.TestCase):
             self.assertEqual(payload["convergence"]["escalation_reason_counts"]["reviewer_exception"], 1)
             self.assertIn("analyzer_confidence_summary", payload["quality"])
             self.assertEqual(payload["quality"]["analyzer_confidence_summary"]["heuristic"]["count"], 1)
+            self.assertIn("observability", payload)
+            self.assertIn("benchmark_gate", payload["observability"])
+            self.assertEqual(payload["observability"]["benchmark_gate"]["gate_passed"], False)
+            self.assertEqual(payload["observability"]["kpi_snapshot_ref"]["plans_total"], 4)
+            self.assertEqual(
+                payload["observability"]["dashboard_regression_summary"]["failure_events_delta"], 2
+            )
             q.close()
 
 
