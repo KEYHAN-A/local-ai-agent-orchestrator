@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from local_ai_agent_orchestrator.analyzers import run_registered_analyzers
 from local_ai_agent_orchestrator.consistency import run_consistency_checks
 from local_ai_agent_orchestrator.schema_lints import run_schema_lints, should_lint_file
 from local_ai_agent_orchestrator.settings import get_settings
@@ -76,6 +77,7 @@ def validate_files(
         findings.extend(_codable_findings(rel, text))
         if should_lint_file(p):
             findings.extend(_from_dicts(run_schema_lints(rel, text)))
+        findings.extend(_from_analyzer_results(run_registered_analyzers(p, text)))
         if p.suffix.lower() in {".proj", ".workspace"}:
             findings.extend(_synthetic_project_graph_findings(rel, text))
     findings.extend(_placeholder_ratio_findings(total_markers, total_chars))
@@ -357,6 +359,24 @@ def _run_cmd(command: str, cwd: Path) -> tuple[int, str]:
         return p.returncode, out.strip()
     except Exception as e:
         return 1, str(e)
+
+
+def _from_analyzer_results(rows) -> list[Finding]:
+    out: list[Finding] = []
+    for r in rows:
+        out.append(
+            Finding(
+                severity=str(getattr(r, "severity", "minor")),
+                issue_class=str(getattr(r, "issue_class", "analyzer_issue")),
+                message=str(getattr(r, "message", "")),
+                file_path=getattr(r, "file_path", None),
+                fix_hint=getattr(r, "fix_hint", None),
+                analyzer_id=str(getattr(r, "analyzer_id", "external")),
+                analyzer_kind=str(getattr(r, "analyzer_kind", "heuristic")),
+                confidence=float(getattr(r, "confidence", 0.6)),
+            )
+        )
+    return out
 
 
 def infer_plan_languages(workspace: Path) -> set[str]:

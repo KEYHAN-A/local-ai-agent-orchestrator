@@ -556,6 +556,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("status", help="Show task queue status")
     sub.add_parser("benchmark", help="Run core reliability benchmark scenarios")
     sub.add_parser("kpi", help="Generate KPI snapshot for weekly tracking")
+    sub.add_parser("dashboard", help="Generate operator dashboard snapshot")
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
     sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
@@ -681,6 +682,19 @@ def main(argv: list[str] | None = None) -> None:
             payload = build_kpi_snapshot(q)
             out = write_kpi_snapshot(get_settings().config_dir, payload)
             print("KPI snapshot generated.")
+            print(f"Report: {out}")
+            return
+        if cmd == "dashboard":
+            from local_ai_agent_orchestrator.dashboards import (
+                build_dashboard_snapshot,
+                write_dashboard_snapshot,
+            )
+            from local_ai_agent_orchestrator.settings import get_settings
+
+            q = TaskQueue()
+            payload = build_dashboard_snapshot(q)
+            out = write_dashboard_snapshot(get_settings().config_dir, payload)
+            print("Dashboard snapshot generated.")
             print(f"Report: {out}")
             return
 

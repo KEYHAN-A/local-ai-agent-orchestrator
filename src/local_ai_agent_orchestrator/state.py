@@ -778,6 +778,13 @@ class TaskQueue:
             "run_events": len(rows),
         }
 
+    def get_run_log_entries(self) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT task_id, phase, model_key, success, error, created_at
+               FROM run_log ORDER BY id ASC"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def add_finding(
         self,
         task_id: int,
