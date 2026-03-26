@@ -75,6 +75,8 @@ def _write_example_config(dest: Path) -> None:
             "retry_cap_reviewer": 3,
             "retry_cap_validation": 3,
             "no_progress_repeat_limit": 2,
+            "benchmark_min_pass_rate": 0.85,
+            "benchmark_fail_on_regression": True,
         },
         "git": {
             "enabled": True,
@@ -198,6 +200,8 @@ def _build_config_from_inputs(
             "retry_cap_reviewer": 3,
             "retry_cap_validation": 3,
             "no_progress_repeat_limit": 2,
+            "benchmark_min_pass_rate": 0.85,
+            "benchmark_fail_on_regression": True,
         },
         "git": {
             "enabled": True,
@@ -667,17 +671,32 @@ def main(argv: list[str] | None = None) -> None:
             runner.health_check(ModelManager())
             return
         if cmd == "benchmark":
+            from local_ai_agent_orchestrator.history import append_history_entry
             from local_ai_agent_orchestrator.benchmarks import (
                 run_benchmark_suite,
                 write_benchmark_report,
             )
             from local_ai_agent_orchestrator.settings import get_settings
+            import json
 
-            payload = run_benchmark_suite()
-            out = write_benchmark_report(get_settings().config_dir, payload)
+            ws = get_settings().config_dir
+            prev = None
+            hist_path = ws / "benchmark_history.json"
+            if hist_path.exists():
+                try:
+                    rows = json.loads(hist_path.read_text(encoding="utf-8"))
+                    if isinstance(rows, list) and rows:
+                        prev = rows[-1]
+                except Exception:
+                    prev = None
+            payload = run_benchmark_suite(previous=prev)
+            out = write_benchmark_report(ws, payload)
+            hist = append_history_entry(ws, "benchmark_history.json", payload)
             print(f"Benchmarks: {payload['passed']}/{payload['total']} passed")
+            print(f"Pass rate: {payload.get('pass_rate', 0):.2%}")
             print(f"Report: {out}")
-            if payload["passed"] < payload["total"]:
+            print(f"History: {hist}")
+            if not bool(payload.get("gate", {}).get("gate_passed", False)):
                 raise SystemExit(2)
             return
         if cmd == "kpi":

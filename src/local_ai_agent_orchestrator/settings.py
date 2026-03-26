@@ -127,6 +127,8 @@ class Settings:
     retry_cap_reviewer: int = 3
     retry_cap_validation: int = 3
     no_progress_repeat_limit: int = 2
+    benchmark_min_pass_rate: float = 0.85
+    benchmark_fail_on_regression: bool = True
     architect_only: bool = False
 
     memory_release_fraction: float = 0.75
@@ -326,6 +328,12 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
             retry_cap_validation=int(orch.get("retry_cap_validation", base.retry_cap_validation)),
             no_progress_repeat_limit=int(
                 orch.get("no_progress_repeat_limit", base.no_progress_repeat_limit)
+            ),
+            benchmark_min_pass_rate=float(
+                orch.get("benchmark_min_pass_rate", base.benchmark_min_pass_rate)
+            ),
+            benchmark_fail_on_regression=bool(
+                orch.get("benchmark_fail_on_regression", base.benchmark_fail_on_regression)
             ),
         )
         if isinstance(orch.get("validation_profiles"), dict):

@@ -41,6 +41,8 @@ orchestration:
   retry_cap_reviewer: 3
   retry_cap_validation: 3
   no_progress_repeat_limit: 2
+  benchmark_min_pass_rate: 0.85
+  benchmark_fail_on_regression: true
 git:
   enabled: true
   plan_file_name: LAO_PLAN.md

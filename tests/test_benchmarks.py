@@ -35,7 +35,9 @@ class TestBenchmarks(unittest.TestCase):
             init_settings(config_path=cfg, cwd=root)
             payload = run_benchmark_suite()
             self.assertEqual(payload["suite"], "core_reliability")
-            self.assertEqual(payload["total"], 4)
+            self.assertEqual(payload["total"], 7)
+            self.assertIn("pass_rate", payload)
+            self.assertIn("gate", payload)
             out = write_benchmark_report(root, payload)
             self.assertTrue(out.exists())
 
