@@ -554,6 +554,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     sub.add_parser("status", help="Show task queue status")
+    sub.add_parser("benchmark", help="Run core reliability benchmark scenarios")
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
     sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
@@ -656,6 +657,20 @@ def main(argv: list[str] | None = None) -> None:
             from local_ai_agent_orchestrator.model_manager import ModelManager
 
             runner.health_check(ModelManager())
+            return
+        if cmd == "benchmark":
+            from local_ai_agent_orchestrator.benchmarks import (
+                run_benchmark_suite,
+                write_benchmark_report,
+            )
+            from local_ai_agent_orchestrator.settings import get_settings
+
+            payload = run_benchmark_suite()
+            out = write_benchmark_report(get_settings().config_dir, payload)
+            print(f"Benchmarks: {payload['passed']}/{payload['total']} passed")
+            print(f"Report: {out}")
+            if payload["passed"] < payload["total"]:
+                raise SystemExit(2)
             return
 
         if cmd in ("retry-failed", "reset-failed"):
