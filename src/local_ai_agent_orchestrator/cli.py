@@ -567,6 +567,18 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("benchmark", help="Run core reliability benchmark scenarios")
     sub.add_parser("kpi", help="Generate KPI snapshot for weekly tracking")
     sub.add_parser("dashboard", help="Generate operator dashboard snapshot")
+    report_p = sub.add_parser("report", help="Quality report schema operations")
+    report_p.add_argument(
+        "action",
+        choices=["check", "migrate"],
+        help="Check schema metadata or migrate report to current schema",
+    )
+    report_p.add_argument(
+        "--file",
+        type=Path,
+        default=None,
+        help="Path to quality report JSON (default: <config_dir>/quality_report.json)",
+    )
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
     sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
@@ -744,6 +756,32 @@ def main(argv: list[str] | None = None) -> None:
             print("Dashboard snapshot generated.")
             print(f"Report: {out}")
             print(f"History: {hist}")
+            return
+        if cmd == "report":
+            from local_ai_agent_orchestrator.report_schema import (
+                check_quality_report_schema,
+                load_and_migrate_quality_report,
+            )
+            from local_ai_agent_orchestrator.settings import get_settings
+
+            ws = get_settings().config_dir
+            target = args.file or (ws / "quality_report.json")
+            if not target.exists():
+                print(f"Report not found: {target}")
+                raise SystemExit(1)
+            if args.action == "check":
+                result = check_quality_report_schema(target)
+                print(f"Schema check: {'OK' if result.get('ok') else 'FAIL'}")
+                print(f"Path: {target}")
+                print(f"Reason: {result.get('reason')}")
+                if result.get("report_meta"):
+                    print(f"Report meta: {result.get('report_meta')}")
+                if not bool(result.get("ok")):
+                    raise SystemExit(2)
+                return
+            migrated = load_and_migrate_quality_report(target, write_back=True)
+            print(f"Migrated report schema in place: {target}")
+            print(f"Report meta: {migrated.get('report_meta')}")
             return
 
         if cmd in ("retry-failed", "reset-failed"):
