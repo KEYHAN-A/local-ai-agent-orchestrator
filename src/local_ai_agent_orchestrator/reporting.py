@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from local_ai_agent_orchestrator.report_schema import build_report_meta
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import TaskQueue
 from local_ai_agent_orchestrator.validators import infer_plan_languages
@@ -76,6 +77,7 @@ def write_quality_report(
     }
 
     payload = {
+        "report_meta": build_report_meta(),
         "plan_id": plan_id,
         "detected_languages": sorted(infer_plan_languages(ws)),
         "task_counts": {

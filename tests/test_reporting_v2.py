@@ -69,6 +69,8 @@ class TestReportingV2(unittest.TestCase):
             q.mark_failed(t.id, "boom", escalation_reason="reviewer_exception")
             out = write_quality_report(q, pid)
             payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertIn("report_meta", payload)
+            self.assertIn("schema_version", payload["report_meta"])
             self.assertIn("preflight", payload)
             self.assertIn("contracts", payload)
             self.assertIn("traceability_summary", payload)
