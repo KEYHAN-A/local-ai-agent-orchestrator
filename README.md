@@ -1,6 +1,10 @@
 # Local AI Agent Orchestrator (LAO)
 
-**LAO** (**v3.0.6+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
+<p align="center">
+  <img alt="LAO interactive home menu with grouped actions" src="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/docs/assets/lao-home-menu.png" width="780"/>
+</p>
+
+**LAO** (**v3.0.7+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -72,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrato
 
 Trust trade-off: piping to `bash` always means you trust the host and transport. Many people prefer the **raw.githubusercontent.com** URL because the path maps cleanly to `main/scripts/install.sh` in this repository. The **lao.keyhan.info** URL is the same behavior after one redirect through the small bootstrap.
 
-Optional environment variables: **`LAO_VERSION`** (pin a release, e.g. `3.0.6`), **`LAO_PACKAGE`** (override PyPI name).
+Optional environment variables: **`LAO_VERSION`** (pin a release, e.g. `3.0.7`), **`LAO_PACKAGE`** (override PyPI name).
 
 ### Homebrew ecosystem
 
@@ -170,11 +174,6 @@ python main.py health
 - **Exiting chat:** Double **Ctrl+C** exits the prompt; **Ctrl+D** (EOF) also ends input.
 
 ### Screenshots
-
-<p align="center">
-  <b>Interactive home</b><br/>
-  <img alt="LAO interactive home menu with grouped actions" src="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/docs/assets/lao-home-menu.png" width="780"/>
-</p>
 <p align="center">
   <b>Pilot Mode</b><br/>
   <img alt="LAO Pilot Mode chat with status bar and LAO ASCII branding" src="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/docs/assets/lao-pilot-mode.png" width="780"/>
@@ -198,7 +197,7 @@ flowchart LR
   pilot --> home2["Exit"]
 ```
 
-Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (latest: `v3.0.6`; Pilot highlights in `v3.0.4`).
+Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (latest: `v3.0.7`; Pilot highlights in `v3.0.4`).
 
 ---
 
@@ -399,4 +398,4 @@ Issues and pull requests are welcome. See **[docs/CONTRIBUTING.md](docs/CONTRIBU
 - **Install the latest build:** `pip install -U local-ai-agent-orchestrator`
 - **GitHub Releases:** [github.com/KEYHAN-A/local-ai-agent-orchestrator/releases](https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases)
 
-**Recent highlights (v3.0.6):** README **Installation** surfaced up front (TOC + section order) alongside curl/pipx install paths; **LAO Pilot Mode** (v3.0.4+) adds interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, and hardened terminal UX. See **[CHANGELOG.md](CHANGELOG.md)**.
+**Recent highlights (v3.0.7):** README opens with the **home menu** screenshot; **Installation** stays up front in the TOC; **LAO Pilot Mode** (v3.0.4+) adds interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, and hardened terminal UX. See **[CHANGELOG.md](CHANGELOG.md)**.

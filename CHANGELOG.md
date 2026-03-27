@@ -2,6 +2,10 @@
 
 All notable changes to **Local AI Agent Orchestrator** are recorded here. For install and usage, see [README.md](README.md).
 
+## v3.0.7 — README hero screenshot & home menu asset
+
+- **README:** Home menu image moved to the top (under the title); duplicate screenshot removed from the Pilot section; refreshed **`docs/assets/lao-home-menu.png`** for PyPI and GitHub rendering.
+
 ## v3.0.6 — README & site: installation up front
 
 - **README:** **Installation** is first in the table of contents and appears immediately after the TOC (before **Features**).
