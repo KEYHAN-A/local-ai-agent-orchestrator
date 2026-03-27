@@ -26,6 +26,8 @@ python -m build
 
 Artifacts appear under `dist/` (`*.tar.gz` and `*.whl`).
 
+**README images:** PyPI renders the project **readme** from `README.md`. Screenshots should use **stable absolute URLs** (for example `raw.githubusercontent.com/.../main/docs/assets/...`) so they resolve on [pypi.org](https://pypi.org/project/local-ai-agent-orchestrator/); files in **`docs/assets/`** are the canonical copies in git. They are not required inside the wheel for that rendering.
+
 ## TestPyPI (optional)
 
 1. Register at [test.pypi.org](https://test.pypi.org) and create an API token.

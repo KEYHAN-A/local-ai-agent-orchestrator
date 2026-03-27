@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Local AI Agent Orchestrator (LAO) — unified interactive local coding pipeline with planner, coder, reviewer, resume-aware queue recovery, and per-plan Git traceability." />
-  <title>Local AI Agent Orchestrator · Local LLM coding factory</title>
+  <meta name="description" content="LAO v3.0.4 — Pilot Mode: interactive local agentic chat plus planner→coder→reviewer orchestration over LM Studio. SQLite state, project registry, unified TTY UI." />
+  <title>LAO · Pilot Mode &amp; local coding orchestration</title>
   <style>
     :root {
       --bg-deep: #030712;
@@ -288,20 +288,155 @@
     }
     footer a { color: var(--accent); text-decoration: none; }
     footer a:hover { text-decoration: underline; }
+
+    .hero-ascii {
+      margin: 0 0 1.25rem;
+      padding: 1rem 1.25rem;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: clamp(0.62rem, 1.6vw, 0.78rem);
+      line-height: 1.35;
+      letter-spacing: 0.02em;
+      box-shadow: 0 0 32px var(--glow);
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    .hero-head {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    @media (min-width: 720px) {
+      .hero-head {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 1.5rem;
+      }
+      .hero-ascii { flex: 0 0 auto; margin-bottom: 0; }
+      .hero-head-text { flex: 1; min-width: 0; }
+    }
+
+    .terminal-mock {
+      margin-top: 1.5rem;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: #020617;
+      text-align: left;
+      max-width: 42rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .terminal-mock .tb {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.5rem 0.85rem;
+      background: rgba(30, 41, 59, 0.9);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .terminal-mock .tb i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #475569;
+    }
+    .terminal-mock .tb i:nth-child(1) { background: #f87171; }
+    .terminal-mock .tb i:nth-child(2) { background: #fbbf24; }
+    .terminal-mock .tb i:nth-child(3) { background: #4ade80; }
+    .terminal-mock .tb span { margin-left: auto; font-size: 0.68rem; opacity: 0.85; }
+    .terminal-mock pre {
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      padding: 1rem 1.1rem 1.1rem;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+    .terminal-mock .muted { color: var(--muted); }
+    .terminal-mock .accent { color: var(--accent); }
+    .terminal-mock .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 1.1em;
+      margin-left: 1px;
+      vertical-align: text-bottom;
+      background: var(--accent);
+      animation: cursor-pulse 1s step-end infinite;
+    }
+    @keyframes cursor-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .terminal-mock .cursor { animation: none; opacity: 1; }
+    }
+
+    .shots {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 900px) {
+      .shots { grid-template-columns: 1fr 1fr; align-items: start; }
+    }
+    .shot {
+      margin: 0;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      vertical-align: middle;
+    }
+    .shot figcaption {
+      padding: 0.65rem 1rem 0.85rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    .steps.cols-6 {
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 768px) {
+      .steps.cols-6 { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (min-width: 1100px) {
+      .steps.cols-6 { grid-template-columns: repeat(6, 1fr); }
+    }
   </style>
 </head>
 <body>
   <header class="hero" id="top">
     <div class="hero-mesh" aria-hidden="true"></div>
     <div class="hero-inner">
-      <p class="eyebrow"><span></span> Local-first · LM Studio · Your silicon</p>
-      <h1>Run a local coding agent factory with a seamless operator flow</h1>
+      <p class="eyebrow"><span></span> v3.0.4 · Pilot Mode · LM Studio · Local-first</p>
+      <div class="hero-head">
+        <pre class="hero-ascii" aria-label="LAO ASCII logo"> ██╗      █████╗  ██████╗ 
+ ██║     ██╔══██╗██╔═══██╗
+ ██║     ███████║██║   ██║
+ ██║     ██╔══██║██║   ██║
+ ███████╗██║  ██║╚██████╔╝
+ ╚══════╝╚═╝  ╚═╝ ╚═════╝</pre>
+        <div class="hero-head-text">
+      <h1>Orchestration and an interactive Pilot in one terminal</h1>
       <p class="hero-lead">
-        <strong>Local AI Agent Orchestrator (LAO)</strong> turns markdown plans into shipped code with a
-        <strong>planner → coder → reviewer</strong> loop and a unified UX across
-        <code>lao</code>, <code>lao init</code>, <code>lao configure-models</code>, and <code>lao run</code>.
-        Keep state in <strong>SQLite</strong>, recover smoothly after interruptions, and keep progress traceable with optional per-plan Git.
+        <strong>Local AI Agent Orchestrator (LAO)</strong> runs a disciplined
+        <strong>planner → coder → reviewer</strong> pipeline—and when work pauses, <strong>Pilot Mode</strong> gives you a Cursor-style chat: tools, queue status, plans, and <code>/resume</code> back to autopilot.
+        Multi-project? Use <code>lao projects</code>. State stays in <strong>SQLite</strong>; optional per-plan <strong>Git</strong> keeps history honest.
       </p>
+        </div>
+      </div>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View on GitHub</a>
         <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install from PyPI</a>
@@ -320,13 +455,45 @@
         <span>OpenAI SDK → LM Studio</span>
         <span>CLI: <code style="font-size: inherit;">lao</code></span>
       </div>
+      <div class="terminal-mock" aria-label="Example LAO pilot prompt">
+        <div class="tb"><i></i><i></i><i></i><span>LAO · Pilot</span></div>
+        <pre><span class="muted">16:55:47 ▶</span> [Pilot] Entering Pilot Mode
+<span class="muted">…</span> <span class="accent">weaving context from your workspace</span>
+
+  <span class="muted">❯</span> hi<span class="cursor" aria-hidden="true"></span>
+
+<span class="muted">/help  /status  /resume  /project</span>  ·  Enter send · Alt+Enter newline</pre>
+      </div>
     </div>
   </header>
+
+  <section id="experience" aria-labelledby="experience-h">
+    <p class="section-title" id="experience-h">In the terminal</p>
+    <h2>See LAO v3.0.4</h2>
+    <p style="margin:-1rem 0 1.5rem;color:var(--muted);font-size:0.95rem;max-width:40rem;">
+      Grouped home menu for first-time operators; Pilot chat with scrollback, slash commands, and a live status strip—same build you get from <code>pip install</code>.
+    </p>
+    <div class="shots">
+      <figure class="shot">
+        <img src="assets/lao-home-menu.png" width="1200" height="800" alt="LAO interactive home menu showing Initialize workspace, Pilot, and grouped other actions" loading="lazy" decoding="async" />
+        <figcaption>Home menu — primary actions first, then <strong>Other actions</strong>, <strong>Exit</strong> last.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/lao-pilot-mode.png" width="1200" height="800" alt="LAO Pilot Mode with LAO ASCII logo, chat transcript, and status bar" loading="lazy" decoding="async" />
+        <figcaption>Pilot Mode — unified UI, tool rounds, token line, <strong>/resume</strong> to return to the pipeline.</figcaption>
+      </figure>
+    </div>
+  </section>
 
   <section id="features" aria-labelledby="features-h">
     <p class="section-title" id="features-h">Capabilities</p>
     <h2>Built to squeeze serious work out of local models</h2>
     <div class="feature-grid">
+      <article class="card">
+        <span class="tag">v3.0.4</span>
+        <h3>Pilot Mode</h3>
+        <p>Interactive agent with filesystem + shell tools, pipeline introspection, plan creation, <code>/project</code> switching, and guardrails when tools error repeatedly. Double Ctrl+C exits the prompt.</p>
+      </article>
       <article class="card">
         <h3>Three-agent pipeline</h3>
         <p>Architect breaks plans into micro-tasks. Coder edits files with tools. Reviewer approves or sends structured rework—without bloated agent-framework scaffolding.</p>
@@ -349,32 +516,45 @@
         <p>Per-plan repos get <code>LAO_PLAN.md</code>, <code>LAO_TASKS.json</code>, and commits named <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable and easy to revert.</p>
       </article>
       <article class="card">
-        <span class="tag">New in v2.0</span>
+        <span class="tag">v2.0+</span>
         <h3>Unified interactive CLI</h3>
-        <p>Home/status, guided init, model remap, and run dashboard now share one coherent TTY experience with guided next actions.</p>
+        <p>Home menu, guided init, model remap, orchestrator run, and Pilot share one coherent TTY language (Rich + prompt_toolkit) with clear next actions.</p>
+      </article>
+      <article class="card">
+        <span class="tag">v3.0.4</span>
+        <h3>Project registry</h3>
+        <p><code>lao projects scan|use|list</code> tracks known workspaces under <code>~/.lao/projects.json</code> so you are not stuck in a parent directory without <code>factory.yaml</code>.</p>
       </article>
     </div>
   </section>
 
   <section id="flow" aria-labelledby="flow-h">
     <p class="section-title" id="flow-h">Flow</p>
-    <h2>From setup to resumed execution</h2>
-    <div class="steps">
+    <h2>From setup to Pilot and back</h2>
+    <div class="steps cols-6">
       <div class="step">
         <h3>Open home</h3>
-        <p>Run <code>lao</code> to see environment readiness and jump into init, model setup, health, or execution.</p>
+        <p>Run <code>lao</code> for status, grouped actions, and optional project scan.</p>
       </div>
       <div class="step">
         <h3>Guided setup</h3>
-        <p><code>lao init</code> creates <code>factory.yaml</code> interactively and can bootstrap an initial plan in one flow.</p>
+        <p><code>lao init</code> creates <code>factory.yaml</code> interactively and can bootstrap an initial plan.</p>
       </div>
       <div class="step">
         <h3>Run pipeline</h3>
-        <p><code>lao run</code> executes planner/coder/reviewer with a Rich dashboard and per-plan workspace mapping.</p>
+        <p><code>lao run</code> executes planner/coder/reviewer with per-plan workspaces and unified TTY UI.</p>
+      </div>
+      <div class="step">
+        <h3>Pilot when idle</h3>
+        <p>Chat, run tools, check status—or run <code>lao pilot</code> directly.</p>
+      </div>
+      <div class="step">
+        <h3>Resume autopilot</h3>
+        <p><code>/resume</code> or the resume tool returns control to the queue.</p>
       </div>
       <div class="step">
         <h3>Pause and continue</h3>
-        <p>Queue state persists in SQLite. Restarting <code>lao run</code> recovers interrupted tasks and continues work.</p>
+        <p>SQLite + WAL: restart anytime; interrupted phases recover automatically.</p>
       </div>
     </div>
   </section>
@@ -384,9 +564,10 @@
     <h2>Install and run in minutes</h2>
     <pre><code>pip install local-ai-agent-orchestrator
 lao
-# choose "init workspace" and follow guided setup
+# choose "Initialize workspace" or "Pilot", or run `lao projects scan` from a parent folder
 lao health
-lao run</code></pre>
+lao run
+lao pilot</code></pre>
     <p style="margin-top:1rem;color:var(--muted);font-size:0.92rem;">
       Existing project workflow: clone/open your repo into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code> so LAO works directly in that codebase folder.
     </p>

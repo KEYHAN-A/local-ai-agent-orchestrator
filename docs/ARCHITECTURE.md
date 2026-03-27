@@ -4,11 +4,15 @@
 
 | Module | Role |
 |--------|------|
-| `cli.py` | Command routing, interactive flows (`lao`, `init`, `configure-models`), settings bootstrap |
-| `interactive_ui.py` | Shared Rich primitives for headers, status tables, prompts, and guided menus |
-| `console_ui.py` | Optional Rich full-screen run dashboard (`lao run` on a TTY) |
+| `cli.py` | Command routing, interactive home (`lao`), `init`, `configure-models`, **`lao pilot`**, **`lao projects`**, settings bootstrap |
+| `interactive_ui.py` | Shared Rich primitives for headers, status tables, prompts, guided menus, **questionary** selects (incl. menu separators) |
+| `unified_ui.py` | **Unified TTY shell** for pilot + runner: `TerminalCapabilities`, `RenderBus`, `ViewComposer`, `TerminalShell` (Rich + **prompt_toolkit**), `LogBridge` |
+| `pilot.py` | **PilotAgent** chat loop, tool dispatch, slash commands, project intent/resolver, consecutive tool-error guard |
+| `pilot_tools.py` | Pilot-only tools (`create_plan`, `pipeline_status`, `retry_failed`, `resume_pipeline`, `project_status`, …) + workspace tool schemas |
+| `project_registry.py` | **ProjectRegistry** / `ProjectEntry`: scan/add/list/`~/.lao/projects.json` persistence |
+| `console_ui.py` | Legacy/plain helpers; run dashboard superseded by unified UI on TTY |
 | `settings.py` | Runtime configuration (YAML + env + CLI) |
-| `runner.py` | Main loop: plan ingestion, task dispatch, signals |
+| `runner.py` | Main loop: plan ingestion, task dispatch, signals; wires **UnifiedUI** + **PilotAgent** when idle |
 | `model_manager.py` | LM Studio REST `load` / `unload`, memory gate (`vm_stat`), JIT fallback |
 | `phases.py` | `architect_phase`, `coder_phase`, `reviewer_phase` + OpenAI client |
 | `state.py` | SQLite WAL: plans, micro_tasks, run_log |
@@ -18,13 +22,14 @@
 
 ## Execution flow
 
-1. **Operator entry:** `lao` presents environment readiness and guides next action (`init`, `health`, `configure-models`, `run`).
-2. **Plans:** New `.md` files under `plans/` (or `--plan`) are hashed; new content gets a `plan_id` and architect run.
-3. **Architect:** The plan text may be **split into chunks** to fit the planner context. Each chunk is sent to the planner model; output is parsed as a **JSON array** of micro-tasks. Chunk results are merged, deduplicated at the plan level, and persisted to SQLite. Completed chunks can be **skipped on resume** if already stored.
-4. **Scheduler:** With **`phase_gated`**, the runner may batch **coder** work then **reviewer** work in waves (`coder_batch_size`, `reviewer_batch_size`). Otherwise it alternates coder → reviewer per task. Dependencies constrain which **pending** tasks are eligible.
-5. **Coder:** For each pending task, load coder model, optional embedding retrieval (`find_relevant_files`), tool loop until final message. File tools run inside **`use_plan_workspace`**: **`<config_dir>/<plan-stem>/`** derived from the plan’s `.md` filename.
-6. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then output is parsed as **structured JSON** (`verdict`, `findings`, `summary`)—including JSON inside **markdown fences** or embedded in prose. Optional static **validators** may add findings and reject before the LLM review when quality gates are strict enough. State transitions: completed, rework (with feedback), or failed after max attempts.
-7. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
+1. **Operator entry:** `lao` presents environment readiness and grouped next actions (`init`, **Pilot**, `run`, **`projects`**, scan, …). **`lao pilot`** or **`lao projects`** bypass the home menu.
+2. **Idle / Pilot:** When `orchestration.pilot_mode_enabled` is true (default), **`lao run`** on a TTY hands off to **PilotAgent** after pipeline work drains; **`TaskQueue`** is bound for tools; **`/resume`** or **`resume_pipeline`** returns to the autopilot loop. **UnifiedUI** renders scrollback, status bar, and prompt (**double Ctrl+C** exits the prompt).
+3. **Plans:** New `.md` files under `plans/` (or `--plan`) are hashed; new content gets a `plan_id` and architect run.
+4. **Architect:** The plan text may be **split into chunks** to fit the planner context. Each chunk is sent to the planner model; output is parsed as a **JSON array** of micro-tasks. Chunk results are merged, deduplicated at the plan level, and persisted to SQLite. Completed chunks can be **skipped on resume** if already stored.
+5. **Scheduler:** With **`phase_gated`**, the runner may batch **coder** work then **reviewer** work in waves (`coder_batch_size`, `reviewer_batch_size`). Otherwise it alternates coder → reviewer per task. Dependencies constrain which **pending** tasks are eligible.
+6. **Coder:** For each pending task, load coder model, optional embedding retrieval (`find_relevant_files`), tool loop until final message. File tools run inside **`use_plan_workspace`**: **`<config_dir>/<plan-stem>/`** derived from the plan’s `.md` filename.
+7. **Reviewer:** Same active workspace as the task’s plan. Load reviewer model, single completion; chain-of-thought blocks (e.g. Qwen3 / DeepSeek-R1 *think* tags) are stripped, then output is parsed as **structured JSON** (`verdict`, `findings`, `summary`)—including JSON inside **markdown fences** or embedded in prose. Optional static **validators** may add findings and reject before the LLM review when quality gates are strict enough. State transitions: completed, rework (with feedback), or failed after max attempts.
+8. **Recovery:** On startup, tasks stuck in `coding` / `review` reset to safe states.
 
 ## Resume semantics
 

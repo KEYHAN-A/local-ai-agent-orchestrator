@@ -1,6 +1,6 @@
 # Local AI Agent Orchestrator (LAO)
 
-**LAO** is a local, multi-phase coding agent for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers. It turns a markdown plan into queued micro-tasks, runs a **coder** with filesystem tools, then a **reviewer** with structured feedback—backed by **SQLite** state, **memory-aware model swapping**, optional **per-plan Git** history, and a unified **Rich** CLI.
+**LAO** (**v3.0.4+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -23,6 +23,8 @@
 ## Table of contents
 
 - [Features](#features)
+- [LAO Pilot Mode](#lao-pilot-mode-v304)
+- [Project commands and multi-repo workflows](#project-commands-and-multi-repo-workflows)
 - [Why the OpenAI SDK (not LangChain / CrewAI)?](#why-the-openai-sdk-not-langchain--crewai)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -56,7 +58,7 @@
 
 ### Models and memory
 
-- **Role-specific models** in `factory.yaml` (`planner`, `coder`, `reviewer`, optional `embedder`).
+- **Role-specific models** in `factory.yaml` (`planner`, `coder`, `reviewer`, **`pilot`**, optional `embedder`).
 - **ModelManager** loads/unloads via LM Studio’s HTTP API so only one large LLM tends to sit in VRAM at a time.
 - **Memory gate:** After unload, waits until freed memory (via `vm_stat` on macOS) meets configured thresholds before loading the next model.
 - **LLM retries:** Configurable timeouts, attempts, and exponential backoff for transient API errors.
@@ -81,10 +83,58 @@
 
 ### Operator experience
 
-- **`lao` (no subcommand):** Interactive home on a TTY—status, guided next steps.
+- **`lao` (no subcommand):** Interactive home on a TTY—environment status, grouped menu (initialize workspace + pilot first, then other actions; **Exit** last).
 - **`lao init`:** Scaffold `factory.yaml` / `factory.example.yaml`, `.lao/`, `plans/`, optional workspace `README.md`.
 - **`lao configure-models`:** Interactive remap of model keys to match `lms ls` / LM Studio.
-- **`lao run`:** Full-screen **dashboard** on a TTY (phase, task, model line, memory gate, queue counts, activity). **`--plain`** yields classic timestamped logs (CI, pipes, debugging).
+- **`lao run`:** Orchestrator loop with unified TTY UI when idle transitions into **Pilot Mode** (configurable). **`--plain`** yields classic timestamped logs (CI, pipes, debugging).
+
+---
+
+## LAO Pilot Mode (v3.0.4)
+
+**Pilot Mode** is the interactive layer when the pipeline is idle—or when you run **`lao pilot`** / choose **Pilot** from the home menu. The Pilot uses the same **OpenAI tools** pattern as the coder (read/write/patch files, shell, semantic search) and adds pipeline controls (`pipeline_status`, `create_plan`, `retry_failed`, `resume_pipeline`, `project_status`, …).
+
+- **Unified UI:** Scrollback for chat and activity, compact status line (phase / model / task), slash hints (`/help`, `/status`, `/resume`, `/clear`, `/exit`, `/project …`).
+- **Project awareness:** **`lao projects`** (list, scan, add, use, needs-action, remove) and in-chat **`/project`** to list, scan, switch workspace, or show status. Registry stored at **`~/.lao/projects.json`**. Intent phrases and paths can trigger a workspace switch before the tool loop.
+- **Guardrails:** Repeated tool errors back off and ask for a clearer path; absolute paths like `/Users/...` are **not** mis-parsed as slash commands.
+- **Exiting chat:** Double **Ctrl+C** exits the prompt; **Ctrl+D** (EOF) also ends input.
+
+### Screenshots
+
+<p align="center">
+  <b>Interactive home</b><br/>
+  <img alt="LAO interactive home menu with grouped actions" src="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/docs/assets/lao-home-menu.png" width="780"/>
+</p>
+<p align="center">
+  <b>Pilot Mode</b><br/>
+  <img alt="LAO Pilot Mode chat with status bar and LAO ASCII branding" src="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/docs/assets/lao-pilot-mode.png" width="780"/>
+</p>
+
+*(Images are also in-repo under [`docs/assets/`](docs/assets/) for the site and offline viewing.)*
+
+### Operator flow (autopilot + pilot)
+
+```mermaid
+flowchart LR
+  home["lao home"] --> init["lao init"]
+  home --> pilotEntry["lao pilot"]
+  home --> run["lao run"]
+  run --> work["Planner Coder Reviewer"]
+  work --> idle{Queue idle?}
+  idle -->|yes| pilot["Pilot chat"]
+  idle -->|no| work
+  pilot --> resume["/resume or tool"]
+  resume --> work
+  pilot --> home2["Exit"]
+```
+
+Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (`v3.0.4 — LAO Pilot Mode`).
+
+---
+
+## Project commands and multi-repo workflows
+
+If you start LAO from a **parent directory** (no `factory.yaml` in the current folder), use **`lao projects scan`** (or the home menu **Scan for LAO projects**) to discover repos that have `factory.yaml`, `plans/*.md`, or `.lao/state.db`. **`lao projects use <name-or-path>`** re-binds configuration to that project. In Pilot chat, **`/project use …`** performs the same switch for the session.
 
 ---
 
@@ -140,11 +190,16 @@ python main.py health
 ## Quick start
 
 ```bash
-lao              # interactive home (TTY), or choose actions from the menu
-lao init         # scaffold config, .lao/, plans/
+lao                  # interactive home (TTY) — init, pilot, run, projects, …
+lao init             # scaffold config, .lao/, plans/
 
-lao health       # LM Studio reachability + configured model keys
-lao run          # watch plans/, process queue (dashboard on TTY)
+lao health           # LM Studio reachability + configured model keys
+lao run              # watch plans/, run pipeline; enters Pilot when idle (TTY)
+lao pilot            # jump straight into Pilot chat (after health check)
+
+# Parent folder without factory.yaml: discover and register projects
+lao projects scan
+lao projects use my-repo
 
 # Alternative: one plan, one pass
 lao --plan plans/my_project.md --single-run run
@@ -163,9 +218,9 @@ Configuration lives in **`factory.yaml`** (or path from **`LAO_CONFIG`** / **`--
 | **`lm_studio_base_url`**, **`openai_api_key`** | Server endpoint and API key (LM Studio often uses a placeholder key). |
 | **`paths.plans`**, **`paths.database`** | Where plans are scanned and where **SQLite** lives (default **`.lao/state.db`**). |
 | **`memory_gate.*`** | Release fraction, swap growth limits, settle timeout, poll interval. |
-| **`orchestration.*`** | Load timeouts, **`max_task_attempts`**, watch interval, LLM timeouts/retries, **`phase_gated`**, **`coder_batch_size`**, **`reviewer_batch_size`**, **`max_context_utilization`**, **`quality_gate_mode`**, optional **`validation_build_cmd`** / **`validation_lint_cmd`**. |
+| **`orchestration.*`** | Load timeouts, **`max_task_attempts`**, watch interval, LLM timeouts/retries, **`phase_gated`**, **`coder_batch_size`**, **`reviewer_batch_size`**, **`max_context_utilization`**, **`quality_gate_mode`**, **`pilot_mode_enabled`**, optional **`validation_build_cmd`** / **`validation_lint_cmd`**. |
 | **`git.*`** | Enable/disable traceability, plan snapshot filename, optional commit trailers. |
-| **`models.*`** | Per-role **`key`**, **`context_length`**, **`max_completion`**, **`supports_tools`**, size hints for memory accounting. |
+| **`models.*`** | Per-role **`key`**, **`context_length`**, **`max_completion`**, **`supports_tools`**, size hints for memory accounting. Roles include **`pilot`** for Pilot Mode. |
 
 Environment variables (including **`LM_STUDIO_BASE_URL`**, **`OPENAI_API_KEY`**, **`TOTAL_RAM_GB`**, **`WORKSPACE_ROOT`**, **`PLANS_DIR`**, **`DB_PATH`**) are documented in **[.env.example](.env.example)**.
 
@@ -177,12 +232,19 @@ Environment variables (including **`LM_STUDIO_BASE_URL`**, **`OPENAI_API_KEY`**,
 
 | Command | Description |
 |---------|-------------|
-| `lao` | Interactive home: environment status and guided actions (TTY). |
-| `lao run` | Watch `plans/`, run architect/coder/reviewer loop until interrupted. |
+| `lao` | Interactive home: environment status and grouped actions (TTY). |
+| `lao run` | Watch `plans/`, run architect/coder/reviewer loop until interrupted; on TTY, **Pilot Mode** when idle unless `--no-pilot`. |
+| `lao pilot` | Enter **Pilot Mode** immediately (LM Studio must be reachable). |
+| `lao projects` | Manage known workspaces: `list` (default), `scan`, `add`, `use`, `remove`, `needs-action`. Optional `--root`, `--tag` on `add`. |
 | `lao init` | Onboarding scaffold: `factory.example.yaml`, `.lao/`, `plans/`, optional `README.md`. Flags: `--skip-readme`, `--no-interactive`. |
 | `lao health` | Check server reachability and that configured model keys exist. |
 | `lao status` | SQLite queue summary and token totals. |
-| `lao configure-models` | Interactive update of planner/coder/reviewer/embedder keys in `factory.yaml`. |
+| `lao configure-models` | Interactive update of role model keys (`planner`, `coder`, `reviewer`, `embedder`, `pilot`) in `factory.yaml`. |
+| `lao preflight` | Plan context diagnostics: `--plan PATH` (required). |
+| `lao benchmark` | Core reliability benchmark suite; writes report under config dir. |
+| `lao kpi` | KPI snapshot for tracking. |
+| `lao dashboard` | Operator dashboard snapshot. |
+| `lao report` | Quality report schema: `check` or `migrate` (`--file` optional). |
 | `lao retry-failed` | Reset **failed** tasks to **pending** for another attempt. |
 | `lao reset-failed` | Deprecated alias for **`retry-failed`**. |
 
@@ -196,9 +258,11 @@ Environment variables (including **`LM_STUDIO_BASE_URL`**, **`OPENAI_API_KEY`**,
 | `--lm-studio-url URL` | Override LM Studio base URL. |
 | `--ram-gb N` | Total RAM in GB (logged; reserved for future tuning). |
 | `--workspace`, `--plans-dir`, `--db` | Override workspace, plans directory, and SQLite path. |
-| `--planner-model`, `--coder-model`, `--reviewer-model`, `--embedder-model` | Override model keys without editing YAML. |
-| `--plain` | Classic scrolling log instead of the full-screen run dashboard. |
+| `--planner-model`, `--coder-model`, `--reviewer-model`, `--embedder-model`, `--pilot-model` | Override model keys without editing YAML. |
+| `--plain` | Classic scrolling log instead of the unified TTY experience. |
 | `--no-git` | Disable Git snapshots/commits for this run (overrides `factory.yaml`). |
+| `--no-pilot` | Disable Pilot Mode during **`lao run`** (legacy idle behavior). |
+| `--pilot-only` | Jump straight into **Pilot Mode** (works with **`lao run`** as well as `lao pilot`). |
 | `--phase-gated` | Enable role-batched phase execution (coder/reviewer waves) for this run. |
 | `--batch-size N` | Coder batch size override for this run. |
 | `--max-context-utilization RATIO` | Planner context utilization hint (0–1). |
@@ -213,7 +277,7 @@ Environment variables (including **`LM_STUDIO_BASE_URL`**, **`OPENAI_API_KEY`**,
 - **State database:** Default **`.lao/state.db`** unless overridden.
 - **Resume:** Restarting **`lao run`** continues from SQLite; interrupted phases are recovered automatically.
 
-On a TTY, **`lao run`** shows a fixed **Rich** dashboard; use **`--plain`** for logs suitable for CI or redirection.
+On a TTY, **`lao run`** uses the **unified LAO shell** (status + activity + pilot when idle). Use **`--plain`** for logs suitable for CI or redirection.
 
 ---
 
@@ -296,4 +360,4 @@ Issues and pull requests are welcome. See **[docs/CONTRIBUTING.md](docs/CONTRIBU
 - **Install the latest build:** `pip install -U local-ai-agent-orchestrator`
 - **GitHub Releases:** [github.com/KEYHAN-A/local-ai-agent-orchestrator/releases](https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases)
 
-**Recent highlights (v2.2.1):** reviewer JSON parsing accepts markdown-fenced and prose-wrapped payloads; regression tests for fenced `APPROVED` responses.
+**Recent highlights (v3.0.4):** **LAO Pilot Mode**—interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, block ASCII branding, and hardened terminal UX. See **[CHANGELOG.md](CHANGELOG.md)**.

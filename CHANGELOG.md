@@ -12,6 +12,7 @@ This release highlights **Pilot Mode**: an interactive local-LLM chat that runs 
 - **Home menu UX:** Primary actions grouped (Initialize workspace + Pilot), then other actions with `Exit` last; default focus on **Initialize workspace** (home-root safety still defaults to Exit).
 - **Branding:** Updated block-style **LAO** ASCII logo on splash and pilot banner.
 - **Input:** Double **Ctrl+C** exits pilot prompt; single Ctrl+C nudges to press again or keep typing.
+- **Docs & site:** README and [lao.keyhan.info](https://lao.keyhan.info) (`docs/index.html`) updated with Pilot workflow, terminal screenshots under `docs/assets/`, and expanded architecture/configuration notes.
 
 ## v2.3.0
 

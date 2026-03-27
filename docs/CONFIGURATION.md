@@ -15,13 +15,15 @@ Top-level keys:
 | `paths.database` | SQLite path (recommended: `./.lao/state.db`) |
 | `paths.workspace` | Optional fallback when no per-plan context is active (default: `.lao/_misc`) |
 | `memory_gate.*` | `release_fraction`, `swap_growth_limit_mb`, `settle_timeout_s`, `poll_interval_s` |
-| `orchestration.*` | Timeouts, retries, `max_task_attempts`, `plan_watch_interval_s` |
+| `orchestration.*` | Timeouts, retries, `max_task_attempts`, `plan_watch_interval_s`, **`pilot_mode_enabled`** (default true: TTY run hands off to Pilot when idle), **`pilot_context_lines`**, etc. |
 | `git.enabled` | When **true** (default), run Git commits in each **per-plan project folder** (`./<plan-stem>/`). Requires **`git`** on `PATH` and committer identity. Override with CLI **`--no-git`**. |
 | `git.plan_file_name` | Snapshot filename for the plan markdown (default **`LAO_PLAN.md`**) |
 | `git.commit_trailers` | When **true**, add **`LAO-Plan-ID`** / **`LAO-Task-ID`** lines to the commit body (second `-m` paragraph) |
 | `models.<role>` | `key`, `context_length`, `max_completion`, `supports_tools`, `size_bytes`, `description` |
 
-Roles: `planner`, `coder`, `reviewer`, `embedder`.
+Roles: `planner`, `coder`, `reviewer`, `embedder`, **`pilot`** (**Pilot Mode** chat agent; configure `key` / context like other roles).
+
+**Pilot (`models.pilot`):** Used when you run **`lao pilot`**, from the interactive home menu, or when **`lao run`** enters Pilot while idle. Match the model key to LM Studio (`lao health` / `lms ls`).
 
 **Planner (`models.planner`):** Large markdown plans need a high **`context_length`** so the full plan fits in the prompt. The architect emits a **JSON array of micro-tasks**, which can be long — set **`max_completion`** high as well (defaults in `factory.example.yaml` use `32768` / `16384`). If you see truncated JSON or `finish_reason=length` errors, increase both values in **`factory.yaml`** and reload the model in LM Studio with the same context size.
 
@@ -35,9 +37,16 @@ Roles: `planner`, `coder`, `reviewer`, `embedder`.
 - In interactive mode, **`lao init`** also writes a ready-to-run **`factory.yaml`** using guided prompts.
 - SQLite and WAL files belong under **`.lao/`** when using the example `paths.database` — keeps stray `NANO*` / WAL files out of the repo root.
 
+### Project registry (v3.0.4+)
+
+- **`lao projects`** stores known LAO workspaces in **`~/.lao/projects.json`** (JSON file, no extra DB).
+- Use **`scan`** to discover directories under a root that contain `factory.yaml`, `plans/*.md`, or **`.lao/state.db`**.
+- **`use`** / **`add`** register a path; **`needs-action`** surfaces queues with pending/failed work.
+- In **Pilot**, **`/project list`**, **`/project scan`**, **`/project use <name>`**, **`/project status`** hit the same registry.
+
 ### Interactive setup and recovery
 
-- Running bare **`lao`** (TTY) opens an interactive home flow that shows environment status and guides next actions (`init`, `run`, `health`, `configure-models`).
+- Running bare **`lao`** (TTY) opens an interactive home flow that shows environment status and grouped next actions (**Initialize workspace**, **Pilot**, then other actions including **`run`**, **`projects`**, **`health`**, **`configure-models`**).
 - The interactive commands share a consistent visual system (Rich header panels, status tables, guided step prompts), so setup and run phases feel continuous.
 - If startup is blocked by missing models, run **`lao configure-models`** to remap role keys (`planner`, `coder`, `reviewer`, `embedder`) without manually editing YAML.
 - After `lao init` or `lao configure-models`, LAO can immediately chain to next actions (`health` or `run`) from the same guided flow.
@@ -76,3 +85,5 @@ CLI flags override YAML after merge. Example:
 lao --lm-studio-url http://192.168.1.10:1234 --ram-gb 64 \
   --reviewer-model my-reviewer-mlx run
 ```
+
+Pilot-related flags (see **`lao run --help`**): **`--no-pilot`** disables idle Pilot on TTY; **`--pilot-only`** opens Pilot immediately (same path as **`lao pilot`**). **`--pilot-model`** overrides the pilot role key.
