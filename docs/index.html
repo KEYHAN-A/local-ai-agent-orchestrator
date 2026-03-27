@@ -16,6 +16,7 @@
     :root {
       --bg-deep: #030712;
       --bg-card: rgba(30, 41, 59, 0.55);
+      --bg-card-solid: #0f172a;
       --text: #f1f5f9;
       --muted: #94a3b8;
       --accent: #818cf8;
@@ -23,27 +24,16 @@
       --mint: #34d399;
       --border: rgba(148, 163, 184, 0.15);
       --glow: rgba(99, 102, 241, 0.35);
+      --radius: 14px;
     }
 
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
 
     @media (prefers-reduced-motion: reduce) {
-      html {
-        scroll-behavior: auto;
-      }
-
-      .hero-mesh,
-      .float-soft {
-        animation: none !important;
-      }
+      html { scroll-behavior: auto; }
+      .hero-mesh, .float-soft { animation: none !important; }
+      .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
     }
 
     body {
@@ -55,35 +45,56 @@
       overflow-x: hidden;
     }
 
-    a:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 3px;
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    /* ─── NAV ─── */
+    .site-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.65rem 1.5rem;
+      background: rgba(3, 7, 18, 0.7);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      transition: background 0.3s ease;
+    }
+    .nav-brand {
+      font-weight: 800; font-size: 1rem; color: var(--text);
+      text-decoration: none; letter-spacing: -0.02em;
+      display: flex; align-items: center; gap: 0.45rem;
+    }
+    .nav-brand .nav-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--mint); box-shadow: 0 0 10px var(--mint);
+    }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; margin: 0; padding: 0; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; font-weight: 500;
+      transition: color 0.2s ease;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+      background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3);
+      color: var(--accent); text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .nav-cta:hover { background: rgba(99, 102, 241, 0.25); border-color: var(--accent); }
+    .nav-cta svg { width: 14px; height: 14px; }
+
+    @media (max-width: 639px) {
+      .nav-links { display: none; }
     }
 
+    /* ─── HERO ─── */
     .hero {
-      position: relative;
-      min-height: 92vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      padding: 4rem 1.5rem 5rem;
+      position: relative; min-height: 92vh;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 6rem 1.5rem 5rem;
     }
-
-    .hero-content {
-      display: flex;
-      flex-direction: row;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 1rem;
-      max-width: 49.8rem;
-    }
-
-    
-
     .hero-mesh {
-      position: absolute;
-      inset: 0;
-      z-index: 0;
+      position: absolute; inset: 0; z-index: 0;
       background:
         radial-gradient(ellipse 80% 60% at 20% 20%, rgba(99, 102, 241, 0.25), transparent 55%),
         radial-gradient(ellipse 70% 50% at 85% 15%, rgba(52, 211, 153, 0.12), transparent 50%),
@@ -91,528 +102,387 @@
         linear-gradient(180deg, #030712 0%, #0f172a 50%, #030712 100%);
       animation: mesh-shift 22s ease-in-out infinite alternate;
     }
-
     @keyframes mesh-shift {
-      from {
-        filter: hue-rotate(-6deg) brightness(1);
-        transform: scale(1);
-      }
-
-      to {
-        filter: hue-rotate(8deg) brightness(1.05);
-        transform: scale(1.02);
-      }
+      from { filter: hue-rotate(-6deg) brightness(1); transform: scale(1); }
+      to { filter: hue-rotate(8deg) brightness(1.05); transform: scale(1.02); }
     }
-
-    .hero-inner {
-      position: relative;
-      z-index: 1;
-      max-width: 56rem;
-      margin: 0 auto;
-      width: 100%;
-    }
-
+    .hero-inner { position: relative; z-index: 1; max-width: 56rem; margin: 0 auto; width: 100%; }
     .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 1rem;
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--accent); margin-bottom: 1rem;
     }
-
     .eyebrow span {
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--mint);
-      box-shadow: 0 0 12px var(--mint);
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--mint); box-shadow: 0 0 12px var(--mint);
     }
-
     h1 {
-      font-size: clamp(2.15rem, 5vw, 3.35rem);
-      font-weight: 800;
-      letter-spacing: -0.035em;
-      line-height: 1.1;
-      margin: 0.4rem 0px 1.1rem;
+      font-size: clamp(2.15rem, 5vw, 3.35rem); font-weight: 800;
+      letter-spacing: -0.035em; line-height: 1.1;
+      margin: 0.4rem 0 1.1rem;
       background: linear-gradient(135deg, #fff 0%, #c7d2fe 45%, #a5b4fc 100%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-
     .hero-lead {
-      font-size: clamp(1.05rem, 2.2vw, 1.15rem);
-      color: var(--muted);
-      max-width: 47rem;
-      margin: 16px 0px;
-      line-height: 30px;
-      padding: 0 4px;
+      font-size: clamp(1.05rem, 2.2vw, 1.15rem); color: var(--muted);
+      max-width: 47rem; margin: 16px 0; line-height: 30px; padding: 0 4px;
     }
+    .hero-lead strong { color: #e2e8f0; font-weight: 600; }
 
-    .hero-lead strong {
-      color: #e2e8f0;
-      font-weight: 600;
-    }
-
-    .install-container {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      margin: 48px auto;
-    }
-
-    .install-container h2 {
-      margin: 0;
-    }
-
-    .cta-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.4rem;
-      padding: 0.7rem 1.35rem;
-      border-radius: 999px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      text-decoration: none;
-      border: 1px solid transparent;
-      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-    }
-
-    .btn:hover {
-      transform: translateY(-1px);
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--mint), #10b981);
-      color: #022c22;
-      box-shadow: 0 8px 32px rgba(52, 211, 153, 0.25);
-    }
-
-    .btn-primary:hover {
-      box-shadow: 0 12px 40px rgba(52, 211, 153, 0.35);
-    }
-
-    .btn-ghost {
-      background: rgba(15, 23, 42, 0.6);
-      border-color: var(--border);
-      color: var(--text);
-      backdrop-filter: blur(8px);
-    }
-
-    .btn-ghost:hover {
-      border-color: var(--accent);
-      color: var(--accent);
+    .hero-head { display: flex; flex-direction: column; gap: 0.25rem; }
+    @media (min-width: 720px) {
+      .hero-head { flex-direction: row; align-items: flex-start; gap: 1.5rem; }
+      .hero-ascii { flex: 0 0 auto; margin-bottom: 0; }
+      .hero-head-text { flex: 1; min-width: 0; margin-bottom: 20px; }
     }
 
     .meta-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      font-size: 0.78rem;
-      color: var(--muted);
+      display: flex; flex-wrap: wrap; gap: 0.5rem;
+      font-size: 0.78rem; color: var(--muted);
     }
-
     .meta-badges span {
-      padding: 0.25rem 0.65rem;
-      border-radius: 6px;
-      background: rgba(15, 23, 42, 0.8);
-      border: 1px solid var(--border);
+      padding: 0.25rem 0.65rem; border-radius: 6px;
+      background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border);
     }
+    .meta-badges a { display: inline-flex; align-items: center; text-decoration: none; }
+    .meta-badges img { height: 20px; border-radius: 6px; }
 
-    .meta-badges a {
-      display: inline-flex;
-      align-items: center;
-      text-decoration: none;
-    }
-
-    .meta-badges img {
-      height: 20px;
-      border-radius: 6px;
-    }
-
-    section {
-      padding: 4rem 1.5rem;
-      max-width: 72rem;
-      margin: 0 auto;
-    }
-
-    section.smaller {
-      padding: 4rem 1.5rem;
-      max-width: 60rem;
-      margin: 0 auto;
-    }
-
-    .section-title {
-      font-size: 0.8rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-      margin: 0 0 0.5rem;
-    }
-
-    h2 {
-      font-size: clamp(1.6rem, 3vw, 2rem);
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin: 0 0 2rem;
-    }
-
-    .feature-grid {
-      display: grid;
-      gap: 1.25rem;
-      grid-template-columns: 1fr;
-    }
-
-    @media (min-width: 640px) {
-      .feature-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (min-width: 960px) {
-      .feature-grid {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 1.35rem 1.5rem;
-      backdrop-filter: blur(12px);
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .card:hover {
-      border-color: rgba(129, 140, 248, 0.35);
-      box-shadow: 0 0 0 1px var(--glow);
-    }
-
-    .card h3 {
-      margin: 0 0 0.5rem;
-      font-size: 1.05rem;
-      font-weight: 650;
-    }
-
-    .card p {
-      margin: 0;
-      font-size: 0.92rem;
-      color: var(--muted);
-    }
-
-    .card .tag {
-      display: inline-block;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--mint);
-      margin-bottom: 0.5rem;
-    }
-
-    .steps {
-      display: grid;
-      gap: 1.5rem;
-      counter-reset: step;
-    }
-
-    @media (min-width: 768px) {
-      .steps {
-        grid-template-columns: repeat(4, 1fr);
-      }
-    }
-
-    .step {
-      position: relative;
-      padding: 1.25rem;
-      border-radius: 14px;
-      background: rgba(15, 23, 42, 0.5);
-      border: 1px solid var(--border);
-    }
-
-    .step::before {
-      counter-increment: step;
-      content: counter(step);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 2rem;
-      height: 2rem;
-      border-radius: 10px;
-      background: linear-gradient(135deg, var(--accent-dim), var(--accent));
-      color: #fff;
-      font-weight: 800;
-      font-size: 0.9rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .step h3 {
-      margin: 0 0 0.35rem;
-      font-size: 1rem;
-    }
-
-    .step p {
-      margin: 0;
-      font-size: 0.88rem;
-      color: var(--muted);
-    }
-
-    pre {
-      margin: 0;
-      padding: 1.25rem 1.35rem;
-      border-radius: 14px;
-      background: #020617;
-      border: 1px solid var(--border);
-      overflow-x: auto;
-      font-size: 0.84rem;
-      line-height: 1.55;
-    }
-
-    code,
-    pre {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-
-    .links ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: grid;
-      gap: 0.65rem;
-    }
-
-    .links a {
-      color: var(--accent);
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    .links a:hover {
-      text-decoration: underline;
-    }
-
-    footer {
-      padding: 3rem 1.5rem;
-      border-top: 1px solid var(--border);
-      text-align: center;
-      font-size: 0.85rem;
-      color: var(--muted);
-      max-width: 56rem;
-      margin: 0 auto;
-    }
-
-    footer a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    footer a:hover {
-      text-decoration: underline;
-    }
-
-    .hero-ascii {
-      padding: 0;
-      border-radius: 14px;
-      background: none;
-      border: none;
-      color: var(--accent);
-      font-size: clamp(0.62rem, 1.6vw, 1.3rem);
-      line-height: 1.35;
-      letter-spacing: 0.02em;
-      box-shadow: none;
-      overflow-x: auto;
-      max-width: 100%;
-    }
-
-    .hero-head {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-
-    @media (min-width: 720px) {
-      .hero-head {
-        flex-direction: row;
-        align-items: flex-start;
-        gap: 1.5rem;
-      }
-
-      .hero-ascii {
-        flex: 0 0 auto;
-        margin-bottom: 0;
-      }
-
-      .hero-head-text {
-        flex: 1;
-        min-width: 0;
-        margin-bottom: 20px;
-      }
-    }
-
+    /* ─── TERMINAL MOCK ─── */
     .terminal-mock {
-      margin: 1.6rem 0;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      overflow: hidden;
-      background: #020617;
-      text-align: left;
-      max-width: 48.8rem;
+      margin: 1.6rem 0; border-radius: var(--radius);
+      border: 1px solid var(--border); overflow: hidden;
+      background: #020617; text-align: left; max-width: 49rem;
     }
-
     .terminal-mock .tb {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
+      display: flex; align-items: center; gap: 0.45rem;
       padding: 0.5rem 0.85rem;
       background: rgba(30, 41, 59, 0.9);
       border-bottom: 1px solid var(--border);
-      font-size: 0.72rem;
-      color: var(--muted);
+      font-size: 0.72rem; color: var(--muted);
     }
-
     .terminal-mock .tb i {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #475569;
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; background: #475569;
     }
-
-    .terminal-mock .tb i:nth-child(1) {
-      background: #f87171;
-    }
-
-    .terminal-mock .tb i:nth-child(2) {
-      background: #fbbf24;
-    }
-
-    .terminal-mock .tb i:nth-child(3) {
-      background: #4ade80;
-    }
-
-    .terminal-mock .tb span {
-      margin-left: auto;
-      font-size: 0.68rem;
-      opacity: 0.85;
-    }
-
+    .terminal-mock .tb i:nth-child(1) { background: #f87171; }
+    .terminal-mock .tb i:nth-child(2) { background: #fbbf24; }
+    .terminal-mock .tb i:nth-child(3) { background: #4ade80; }
+    .terminal-mock .tb span { margin-left: auto; font-size: 0.68rem; opacity: 0.85; }
     .terminal-mock pre {
-      margin: 0;
-      border: none;
-      border-radius: 0;
-      padding: 1rem 1.1rem 1.1rem;
-      font-size: 0.8rem;
-      line-height: 1.5;
-      color: #e2e8f0;
+      margin: 0; border: none; border-radius: 0;
+      padding: 1rem 1.1rem 1.1rem; font-size: 0.8rem;
+      line-height: 1.5; color: #e2e8f0;
     }
-
-    .terminal-mock .muted {
-      color: var(--muted);
-    }
-
-    .terminal-mock .accent {
-      color: var(--accent);
-    }
-
+    .terminal-mock .muted { color: var(--muted); }
+    .terminal-mock .accent { color: var(--accent); }
     .terminal-mock .cursor {
-      display: inline-block;
-      width: 0.55em;
-      height: 1.1em;
-      margin-left: 1px;
-      vertical-align: text-bottom;
-      background: var(--accent);
-      animation: cursor-pulse 1s step-end infinite;
+      display: inline-block; width: 0.55em; height: 1.1em;
+      margin-left: 1px; vertical-align: text-bottom;
+      background: var(--accent); animation: cursor-pulse 1s step-end infinite;
     }
-
-    @keyframes cursor-pulse {
-
-      0%,
-      100% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0;
-      }
-    }
+    @keyframes cursor-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
     @media (prefers-reduced-motion: reduce) {
-      .terminal-mock .cursor {
-        animation: none;
-        opacity: 1;
-      }
+      .terminal-mock .cursor { animation: none; opacity: 1; }
     }
 
-    .shots {
-      display: grid;
-      gap: 1.25rem;
+    /* ─── SHARED SECTION ─── */
+    section { padding: 5rem 1.5rem; max-width: 72rem; margin: 0 auto; }
+    section.smaller { max-width: 60rem; }
+    .section-title {
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--accent); margin: 0 0 0.5rem;
+    }
+    h2 {
+      font-size: clamp(1.6rem, 3vw, 2rem); font-weight: 700;
+      letter-spacing: -0.02em; margin: 0 0 2rem;
+    }
+
+    /* ─── BUTTONS ─── */
+    .cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 0.4rem; padding: 0.7rem 1.35rem; border-radius: 999px;
+      font-size: 0.95rem; font-weight: 600; text-decoration: none;
+      border: 1px solid transparent;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--mint), #10b981);
+      color: #022c22; box-shadow: 0 8px 32px rgba(52, 211, 153, 0.25);
+    }
+    .btn-primary:hover { box-shadow: 0 12px 40px rgba(52, 211, 153, 0.35); }
+    .btn-ghost {
+      background: rgba(15, 23, 42, 0.6); border-color: var(--border);
+      color: var(--text); backdrop-filter: blur(8px);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── INSTALL SECTION ─── */
+    .install-header {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;
+    }
+    .install-header h2 { margin: 0; }
+
+    .install-grid {
+      display: grid; gap: 1rem;
       grid-template-columns: 1fr;
     }
-
-    @media (min-width: 900px) {
-      .shots {
-        display: flex;
-        flex-direction: column;
-        align-items: start;
-      }
+    @media (min-width: 640px) {
+      .install-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .install-grid .install-card-full {
+      grid-column: 1 / -1;
     }
 
-    .shot {
-      margin: 0;
-      border-radius: 16px;
-      overflow: hidden;
+    .install-card {
+      position: relative;
+      border-radius: var(--radius); overflow: hidden;
       border: 1px solid var(--border);
-      background: rgba(15, 23, 42, 0.5);
+      background: #020617;
+      transition: border-color 0.2s ease;
+    }
+    .install-card:hover { border-color: rgba(129, 140, 248, 0.3); }
+    .install-card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.55rem 0.85rem;
+      background: rgba(30, 41, 59, 0.9);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem; font-weight: 600; color: var(--muted);
+    }
+    .install-card-head .label { display: flex; align-items: center; gap: 0.4rem; }
+    .install-card-head .label svg { width: 14px; height: 14px; opacity: 0.7; }
+    .copy-btn {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.2rem 0.55rem; border-radius: 6px;
+      background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2);
+      color: var(--accent); font-size: 0.7rem; font-weight: 600;
+      cursor: pointer; transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .copy-btn:hover {
+      background: rgba(99, 102, 241, 0.2); border-color: var(--accent);
+    }
+    .copy-btn.copied {
+      background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.3);
+      color: var(--mint);
+    }
+    .copy-btn svg { width: 12px; height: 12px; }
+    .install-card pre {
+      margin: 0; border: none; border-radius: 0;
+      padding: 0.85rem 1rem; font-size: 0.82rem; line-height: 1.55;
+    }
+    .install-card code { color: #e2e8f0; }
+    .install-card .muted { color: var(--muted); }
+    .install-card .mint { color: var(--mint); }
+
+    .install-note {
+      margin-top: 1rem; color: var(--muted); font-size: 0.88rem;
+      line-height: 1.6; padding-left: 0.25rem;
+    }
+    .install-note a { color: var(--accent); text-decoration: none; }
+    .install-note a:hover { text-decoration: underline; }
+    .install-note code {
+      font-size: 0.82rem; padding: 0.15rem 0.4rem; border-radius: 5px;
+      background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border);
     }
 
-    .shot img {
-      display: block;
-      width: 100%;
-      height: auto;
-      vertical-align: middle;
+    /* ─── FEATURE GRID ─── */
+    .feature-grid {
+      display: grid; gap: 1.25rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
+    /* @media (min-width: 960px) { .feature-grid { grid-template-columns: repeat(3, 1fr); } } */
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 1.35rem 1.5rem;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    }
+    .card:hover {
+      border-color: rgba(129, 140, 248, 0.35);
+      box-shadow: 0 0 0 1px var(--glow);
+      transform: translateY(-2px);
+    }
+    .card-icon {
+      display: flex; align-items: center; justify-content: center;
+      width: 2.4rem; height: 2.4rem; border-radius: 10px;
+      margin-bottom: 0.85rem; font-size: 1.15rem;
+      background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.15);
+    }
+    .card-icon.mint-bg {
+      background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.15);
+    }
+    .card h3 { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 650; }
+    .card p { margin: 0; font-size: 0.92rem; color: var(--muted); }
+    .card .tag {
+      display: inline-block; font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--mint); margin-bottom: 0.5rem;
     }
 
+    /* ─── STEPS ─── */
+    .steps {
+      display: grid; gap: 1.5rem; counter-reset: step;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 768px) {
+      .steps { grid-template-columns: repeat(3, 1fr); }
+    }
+    .step {
+      position: relative; padding: 1.35rem 1.25rem;
+      border-radius: var(--radius);
+      background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .step:hover {
+      border-color: rgba(129, 140, 248, 0.25);
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.08);
+    }
+    .step::before {
+      counter-increment: step; content: counter(step);
+      display: flex; align-items: center; justify-content: center;
+      width: 2rem; height: 2rem; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+      color: #fff; font-weight: 800; font-size: 0.9rem; margin-bottom: 0.75rem;
+    }
+    .step h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+    .step p { margin: 0; font-size: 0.88rem; color: var(--muted); }
+
+    /* ─── SCREENSHOTS ─── */
+    .shots { display: grid; gap: 1.5rem; grid-template-columns: 1fr; }
+    @media (min-width: 900px) {
+      .shots { grid-template-columns: 1fr; }
+    }
+    .shot {
+      margin: 0; border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--border); background: rgba(15, 23, 42, 0.5);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .shot:hover {
+      border-color: rgba(129, 140, 248, 0.25);
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.1);
+    }
+    .shot img { display: block; width: 100%; height: auto; }
     .shot figcaption {
-      padding: 0.65rem 1rem 0.85rem;
-      font-size: 0.88rem;
-      color: var(--muted);
+      padding: 0.75rem 1rem 0.85rem; font-size: 0.88rem;
+      color: var(--muted); border-top: 1px solid var(--border);
+    }
+
+    /* ─── DOCS ─── */
+    .docs-grid {
+      display: grid; gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) { .docs-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .doc-card {
+      display: flex; align-items: flex-start; gap: 0.85rem;
+      padding: 1.15rem 1.25rem; border-radius: var(--radius);
+      background: var(--bg-card); border: 1px solid var(--border);
+      text-decoration: none; color: var(--text);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    }
+    .doc-card:hover {
+      border-color: rgba(129, 140, 248, 0.35);
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.1);
+      transform: translateY(-2px);
+    }
+    .doc-card-icon {
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      width: 2.2rem; height: 2.2rem; border-radius: 8px;
+      background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.15);
+      font-size: 1rem;
+    }
+    .doc-card-body { min-width: 0; }
+    .doc-card-title { font-weight: 650; font-size: 0.95rem; margin-bottom: 0.2rem; color: var(--text); }
+    .doc-card-desc { font-size: 0.84rem; color: var(--muted); margin: 0; }
+    .doc-card-arrow {
+      margin-left: auto; align-self: center; color: var(--accent); opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .doc-card:hover .doc-card-arrow { opacity: 1; transform: translateX(3px); }
+
+    /* ─── SECTION DIVIDERS ─── */
+    .section-divider {
+      max-width: 40rem;
+      margin: 72px auto;
+      border: none;
       border-top: 1px solid var(--border);
     }
 
-    .steps.cols-6 {
-      grid-template-columns: 1fr;
+    /* ─── FOOTER ─── */
+    footer {
+      padding: 3rem 1.5rem 2rem; border-top: 1px solid var(--border);
+      text-align: center; max-width: 56rem; margin: 0 auto;
     }
-
-    @media (min-width: 768px) {
-      .steps.cols-6 {
-        grid-template-columns: repeat(3, 1fr);
-      }
+    .footer-brand { font-weight: 700; font-size: 1rem; margin-bottom: 0.75rem; color: var(--text); }
+    .footer-links {
+      display: flex; justify-content: center; flex-wrap: wrap; gap: 1.5rem;
+      margin-bottom: 1.25rem; font-size: 0.85rem;
     }
+    .footer-links a { color: var(--muted); text-decoration: none; transition: color 0.2s ease; }
+    .footer-links a:hover { color: var(--accent); }
+    .footer-copy { font-size: 0.8rem; color: var(--muted); margin: 0; }
+    .footer-copy a { color: var(--accent); text-decoration: none; }
+    .footer-copy a:hover { text-decoration: underline; }
 
-    @media (min-width: 1100px) {
-      .steps.cols-6 {
-        grid-template-columns: repeat(3, 1fr);
-      }
+    /* ─── SCROLL REVEAL ─── */
+    .reveal {
+      opacity: 0; transform: translateY(24px);
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-delay-1 { transition-delay: 0.08s; }
+    .reveal-delay-2 { transition-delay: 0.16s; }
+    .reveal-delay-3 { transition-delay: 0.24s; }
+
+    /* ─── CODE/PRE BASELINE ─── */
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      margin: 0; padding: 1.25rem 1.35rem; border-radius: var(--radius);
+      background: #020617; border: 1px solid var(--border);
+      overflow-x: auto; font-size: 0.84rem; line-height: 1.55;
+    }
+    code {
+      font-size: 0.85em; padding: 0.12rem 0.35rem; border-radius: 5px;
+      background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border);
+    }
+    pre code { padding: 0; background: none; border: none; font-size: inherit; }
+
+    /* ─── UTILITY ─── */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
     }
   </style>
 </head>
 
 <body>
+
+  <!-- ─── NAVIGATION ─── -->
+  <nav class="site-nav" aria-label="Primary">
+    <a class="nav-brand" href="#top"><span class="nav-dot"></span> LAO</a>
+    <ul class="nav-links">
+      <li><a href="#install">Install</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#flow">Flow</a></li>
+      <li><a href="#experience">Terminal</a></li>
+      <li><a href="#docs">Docs</a></li>
+    </ul>
+    <a class="nav-cta" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </nav>
+
+  <!-- ─── HERO ─── -->
   <header class="hero" id="top">
     <div class="hero-mesh" aria-hidden="true"></div>
     <div class="hero-inner">
@@ -638,7 +508,7 @@
             </a>
             <span>GPL-3.0-only</span>
             <span>OpenAI SDK → LM Studio</span>
-            <span>CLI: <code style="font-size: inherit;">lao</code></span>
+            <span>CLI: <code style="font-size:inherit;padding:0;background:none;border:none;">lao</code></span>
           </div>
 
           <div class="terminal-mock" aria-label="Example LAO pilot prompt">
@@ -657,157 +527,215 @@
   <span class="muted">❯</span> hi<span class="cursor" aria-hidden="true"></span>
     
  <span class="muted">/help  /status  /resume  /project</span>  ·  Enter send · Alt+Enter newline</pre>
-</div>
-
+          </div>
 
           <p class="hero-lead">
             <strong>Local AI Agent Orchestrator (LAO)</strong> runs a disciplined
             <strong>planner → coder → reviewer</strong> pipeline—and when work pauses,
             <strong>Pilot Mode</strong> gives you a chat similar to Claude Code or Cursor: tools, queue status, plans,
             and
-            <code>/resume</code> back to autopilot. Multi-project? Use <code>lao projects</code>. State stays in
+            <code style="padding:0;background:none;border:none;">/resume</code> back to autopilot. Multi-project? Use <code style="padding:0;background:none;border:none;">lao projects</code>. State stays in
             <strong>SQLite</strong>; optional per-plan <strong>Git</strong> keeps history honest.
           </p>
         </div>
       </div>
-
-
-
     </div>
   </header>
 
+  <!-- ─── INSTALL ─── -->
   <section id="install" aria-labelledby="install-h" class="smaller">
-    <p class="section-title" id="install-h">Quick start</p>
-    <div class="install-container">
-      <h2>Install and run in minutes</h2>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View
-          on
-          GitHub</a>
-        <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install
-          from PyPI</a>
+    <div class="reveal">
+      <p class="section-title" id="install-h">Quick start</p>
+      <div class="install-header">
+        <h2>Install and run in minutes</h2>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View
+            on GitHub</a>
+          <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install
+            from PyPI</a>
+        </div>
       </div>
     </div>
-    <p style="margin:-0.5rem 0 0.75rem;color:var(--muted);font-size:0.92rem;max-width:44rem;">
-      One-liner (uses <strong>pipx</strong> if installed, else <code>pip install --user</code>):
-      <code style="white-space:normal;">curl -fsSL https://lao.keyhan.info/install.sh | bash</code>
-      — or audit the same script from
-      <a href="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh"
-        rel="noopener">GitHub raw</a>.
-    </p>
-    <pre><code>pip install local-ai-agent-orchestrator
-lao
-# choose "Initialize workspace" or "Pilot", or run `lao projects scan` from a parent folder
-lao health
-lao run
-lao pilot</code></pre>
-    <p style="margin-top:1rem;color:var(--muted);font-size:0.92rem;">
-      Existing project workflow: clone/open your repo into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code>
+
+    <div class="install-grid reveal reveal-delay-1">
+
+      <div class="install-card">
+        <div class="install-card-head">
+          <span class="label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            One-liner
+          </span>
+          <button class="copy-btn" data-copy="curl -fsSL https://lao.keyhan.info/install.sh | bash" aria-label="Copy install command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre><code><span class="muted">$</span> curl -fsSL https://lao.keyhan.info/install.sh | bash</code></pre>
+      </div>
+
+      <div class="install-card">
+        <div class="install-card-head">
+          <span class="label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            pip
+          </span>
+          <button class="copy-btn" data-copy="pip install local-ai-agent-orchestrator" aria-label="Copy pip install command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre><code><span class="muted">$</span> pip install local-ai-agent-orchestrator</code></pre>
+      </div>
+
+      <div class="install-card install-card-full">
+        <div class="install-card-head">
+          <span class="label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Run
+          </span>
+          <button class="copy-btn" data-copy="lao" aria-label="Copy run command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre><code><span class="muted">$</span> lao
+<span class="muted"># choose "Initialize workspace" or "Pilot", or run `lao projects scan`</span>
+<span class="muted">$</span> lao health
+<span class="muted">$</span> lao run
+<span class="muted">$</span> lao pilot</code></pre>
+      </div>
+
+    </div>
+
+    <p class="install-note reveal reveal-delay-2">
+      The one-liner uses <strong>pipx</strong> if installed, otherwise <code>pip install --user</code>.
+      <a href="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh" rel="noopener">Audit the script on GitHub</a>
+      before running. Existing project? Clone into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code>
       so LAO works directly in that codebase folder.
     </p>
   </section>
 
+  <hr class="section-divider" />
+
+  <!-- ─── FEATURES ─── -->
   <section id="features" aria-labelledby="features-h">
-    <p class="section-title" id="features-h">Capabilities</p>
-    <h2>Built to squeeze serious work out of local models</h2>
+    <div class="reveal">
+      <p class="section-title" id="features-h">Capabilities</p>
+      <h2>Built to squeeze serious work out of local models</h2>
+    </div>
     <div class="feature-grid">
-      <article class="card">
+      <article class="card reveal">
+        <div class="card-icon mint-bg">🧭</div>
         <span class="tag">v3.0.5</span>
         <h3>Pilot Mode</h3>
         <p>Interactive agent with filesystem + shell tools, pipeline introspection, plan creation, <code>/project</code>
-          switching, and guardrails when tools error repeatedly. Double Ctrl+C exits the prompt.</p>
+          switching, and guardrails when tools error repeatedly.</p>
       </article>
-      <article class="card">
+      <article class="card reveal reveal-delay-1">
+        <div class="card-icon">⚙️</div>
         <h3>Three-agent pipeline</h3>
         <p>Architect breaks plans into micro-tasks. Coder edits files with tools. Reviewer approves or sends structured
           rework—without bloated agent-framework scaffolding.</p>
       </article>
-      <article class="card">
+      <article class="card reveal reveal-delay-2">
+        <div class="card-icon">🗄️</div>
         <h3>SQLite backbone</h3>
         <p>WAL-mode queue survives crashes; retries, run logs, and token tallies stay queryable while jobs churn
           overnight.</p>
       </article>
-      <article class="card">
+      <article class="card reveal">
+        <div class="card-icon mint-bg">🍎</div>
         <h3>Memory-aware swaps</h3>
         <p>Loads one big LLM at a time, unloads the rest, and waits for unified memory to settle—less swap thrash on
           Apple Silicon when models are tens of GB.</p>
       </article>
-      <article class="card">
+      <article class="card reveal reveal-delay-1">
+        <div class="card-icon">🔍</div>
         <h3>Semantic retrieval</h3>
         <p>Optional embedder (e.g. Nomic) narrows file context before coding so small local windows still hit the right
           files.</p>
       </article>
-      <article class="card">
+      <article class="card reveal reveal-delay-2">
+        <div class="card-icon mint-bg">📦</div>
         <span class="tag">New in v1.3</span>
         <h3>Git you can trust</h3>
         <p>Per-plan repos get <code>LAO_PLAN.md</code>, <code>LAO_TASKS.json</code>, and commits named
-          <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable and easy to revert.
-        </p>
+          <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable.</p>
       </article>
-      <article class="card">
+      <article class="card reveal">
+        <div class="card-icon">🖥️</div>
         <span class="tag">v2.0+</span>
         <h3>Unified interactive CLI</h3>
         <p>Home menu, guided init, model remap, orchestrator run, and Pilot share one coherent TTY language (Rich +
           prompt_toolkit) with clear next actions.</p>
       </article>
-      <article class="card">
+      <article class="card reveal reveal-delay-1">
+        <div class="card-icon mint-bg">📂</div>
         <span class="tag">v3.0.5</span>
         <h3>Project registry</h3>
         <p><code>lao projects scan|use|list</code> tracks known workspaces under <code>~/.lao/projects.json</code> so
-          you are not stuck in a parent directory without <code>factory.yaml</code>.</p>
+          you aren't stuck in a parent directory without <code>factory.yaml</code>.</p>
       </article>
     </div>
   </section>
 
+  <hr class="section-divider" />
 
-
+  <!-- ─── FLOW ─── -->
   <section id="flow" aria-labelledby="flow-h" class="smaller">
-    <p class="section-title" id="flow-h">Flow</p>
-    <h2>From setup to Pilot and back</h2>
-    <div class="steps cols-6">
-      <div class="step">
+    <div class="reveal">
+      <p class="section-title" id="flow-h">Flow</p>
+      <h2>From setup to Pilot and back</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
         <h3>Open home</h3>
         <p>Run <code>lao</code> for status, grouped actions, and optional project scan.</p>
       </div>
-      <div class="step">
+      <div class="step reveal reveal-delay-1">
         <h3>Guided setup</h3>
         <p><code>lao init</code> creates <code>factory.yaml</code> interactively and can bootstrap an initial plan.</p>
       </div>
-      <div class="step">
+      <div class="step reveal reveal-delay-2">
         <h3>Run pipeline</h3>
         <p><code>lao run</code> executes planner/coder/reviewer with per-plan workspaces and unified TTY UI.</p>
       </div>
-      <div class="step">
+      <div class="step reveal">
         <h3>Pilot when idle</h3>
         <p>Chat, run tools, check status—or run <code>lao pilot</code> directly.</p>
       </div>
-      <div class="step">
+      <div class="step reveal reveal-delay-1">
         <h3>Resume autopilot</h3>
         <p><code>/resume</code> or the resume tool returns control to the queue.</p>
       </div>
-      <div class="step">
+      <div class="step reveal reveal-delay-2">
         <h3>Pause and continue</h3>
         <p>SQLite + WAL: restart anytime; interrupted phases recover automatically.</p>
       </div>
     </div>
   </section>
 
+  <hr class="section-divider" />
+
+  <!-- ─── SCREENSHOTS ─── -->
   <section id="experience" class="smaller" aria-labelledby="experience-h">
-    <p class="section-title" id="experience-h">In the terminal</p>
-    <h2>See LAO v3.0.5</h2>
-    <p style="margin:-1rem 0 1.5rem;color:var(--muted);font-size:0.95rem;max-width:40rem;">
-      Grouped home menu for first-time operators; Pilot chat with scrollback, slash commands, and a live status
-      strip—same build you get from <code>pip install</code>.
-    </p>
+    <div class="reveal">
+      <p class="section-title" id="experience-h">In the terminal</p>
+      <h2>See LAO v3.0.5</h2>
+      <p style="margin:-1rem 0 1.5rem;color:var(--muted);font-size:0.95rem;max-width:40rem;">
+        Grouped home menu for first-time operators; Pilot chat with scrollback, slash commands, and a live status
+        strip—same build you get from <code>pip install</code>.
+      </p>
+    </div>
     <div class="shots">
-      <figure class="shot">
+      <figure class="shot reveal">
         <img src="assets/lao-home-menu.png" width="1200" height="800"
           alt="LAO interactive home menu showing Initialize workspace, Pilot, and grouped other actions" loading="lazy"
           decoding="async" />
         <figcaption>Home menu — primary actions first, then <strong>Other actions</strong>, <strong>Exit</strong> last.
         </figcaption>
       </figure>
-      <figure class="shot">
+      <figure class="shot reveal reveal-delay-1">
         <img src="assets/lao-pilot-mode.png" width="1200" height="800"
           alt="LAO Pilot Mode with LAO ASCII logo, chat transcript, and status bar" loading="lazy" decoding="async" />
         <figcaption>Pilot Mode — unified UI, tool rounds, token line, <strong>/resume</strong> to return to the
@@ -816,29 +744,118 @@ lao pilot</code></pre>
     </div>
   </section>
 
-  <section class="links" id="docs" aria-labelledby="docs-h">
-    <p class="section-title" id="docs-h">Docs</p>
-    <h2>On GitHub</h2>
-    <ul>
-      <li><a
-          href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">Configuration</a>
-        — <code>factory.yaml</code>, paths, Git options</li>
-      <li><a
-          href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md">Architecture</a>
-        — modules, queue, Git cadence</li>
-      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/README.md">README</a> — full
-        reference &amp; changelog</li>
-      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues">Issues</a> — feedback &amp; bugs</li>
-    </ul>
+  <hr class="section-divider" />
+
+  <!-- ─── DOCS ─── -->
+  <section class="smaller" id="docs" aria-labelledby="docs-h">
+    <div class="reveal">
+      <p class="section-title" id="docs-h">Documentation</p>
+      <h2>Learn more on GitHub</h2>
+    </div>
+    <div class="docs-grid">
+      <a class="doc-card reveal" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md" rel="noopener">
+        <span class="doc-card-icon">⚙️</span>
+        <div class="doc-card-body">
+          <div class="doc-card-title">Configuration</div>
+          <p class="doc-card-desc"><code>factory.yaml</code>, paths, Git options</p>
+        </div>
+        <span class="doc-card-arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="doc-card reveal reveal-delay-1" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md" rel="noopener">
+        <span class="doc-card-icon">🏗️</span>
+        <div class="doc-card-body">
+          <div class="doc-card-title">Architecture</div>
+          <p class="doc-card-desc">Modules, queue, Git cadence</p>
+        </div>
+        <span class="doc-card-arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="doc-card reveal" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/README.md" rel="noopener">
+        <span class="doc-card-icon">📖</span>
+        <div class="doc-card-body">
+          <div class="doc-card-title">README</div>
+          <p class="doc-card-desc">Full reference &amp; changelog</p>
+        </div>
+        <span class="doc-card-arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="doc-card reveal reveal-delay-1" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues" rel="noopener">
+        <span class="doc-card-icon">💬</span>
+        <div class="doc-card-body">
+          <div class="doc-card-title">Issues</div>
+          <p class="doc-card-desc">Feedback &amp; bug reports</p>
+        </div>
+        <span class="doc-card-arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
   </section>
 
+  <!-- ─── FOOTER ─── -->
   <footer>
-    <p>
+    <div class="footer-brand">LAO</div>
+    <div class="footer-links">
+      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator">GitHub</a>
+      <a href="https://pypi.org/project/local-ai-agent-orchestrator/">PyPI</a>
+      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">Docs</a>
+      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues">Issues</a>
+      <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest">Releases</a>
+    </div>
+    <p class="footer-copy">
       <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator">KEYHAN-A/local-ai-agent-orchestrator</a>
-      · PyPI <code>local-ai-agent-orchestrator</code>
       · Licensed under <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/LICENSE">GPL-3.0</a>
     </p>
   </footer>
+
+  <!-- ─── SCRIPTS ─── -->
+  <script>
+    (function () {
+      /* Copy-to-clipboard */
+      document.querySelectorAll('.copy-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var text = btn.getAttribute('data-copy');
+          if (!text) return;
+          navigator.clipboard.writeText(text).then(function () {
+            btn.classList.add('copied');
+            var orig = btn.innerHTML;
+            btn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied';
+            setTimeout(function () {
+              btn.classList.remove('copied');
+              btn.innerHTML = orig;
+            }, 2000);
+          });
+        });
+      });
+
+      /* Scroll reveal via IntersectionObserver */
+      var reveals = document.querySelectorAll('.reveal');
+      if ('IntersectionObserver' in window) {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+        reveals.forEach(function (el) { observer.observe(el); });
+      } else {
+        reveals.forEach(function (el) { el.classList.add('visible'); });
+      }
+
+      /* Nav background on scroll */
+      var nav = document.querySelector('.site-nav');
+      if (nav) {
+        var scrolled = false;
+        window.addEventListener('scroll', function () {
+          if (window.scrollY > 40 && !scrolled) {
+            nav.style.background = 'rgba(3, 7, 18, 0.92)';
+            scrolled = true;
+          } else if (window.scrollY <= 40 && scrolled) {
+            nav.style.background = 'rgba(3, 7, 18, 0.7)';
+            scrolled = false;
+          }
+        }, { passive: true });
+      }
+    })();
+  </script>
 </body>
 
 </html>
