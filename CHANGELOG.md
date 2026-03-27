@@ -2,6 +2,17 @@
 
 All notable changes to **Local AI Agent Orchestrator** are recorded here. For install and usage, see [README.md](README.md).
 
+## v3.0.4 — LAO Pilot Mode
+
+This release highlights **Pilot Mode**: an interactive local-LLM chat that runs workspace tools, inspects pipeline status, creates plans, and hands control back to the autopilot pipeline when you are ready.
+
+- **Pilot Mode:** Full-screen unified CLI (`UnifiedUI` + prompt_toolkit) for continuous scrollback, status bar, and robust terminal rendering (banner outside `patch_stdout` to avoid ANSI mangling).
+- **Project-aware Pilot:** `ProjectRegistry` (`~/.lao/projects.json`), `lao projects` subcommands, `/project` in chat, intent-based project resolution, tool-loop bailout after repeated errors, and clearer empty-LLM fallbacks.
+- **Slash vs path:** Absolute paths (e.g. `/Users/...`) are no longer mistaken for slash commands.
+- **Home menu UX:** Primary actions grouped (Initialize workspace + Pilot), then other actions with `Exit` last; default focus on **Initialize workspace** (home-root safety still defaults to Exit).
+- **Branding:** Updated block-style **LAO** ASCII logo on splash and pilot banner.
+- **Input:** Double **Ctrl+C** exits pilot prompt; single Ctrl+C nudges to press again or keep typing.
+
 ## v2.3.0
 
 - **Release rollout:** publish preparation for `v2.3.0` with project metadata version bump and release packaging flow.

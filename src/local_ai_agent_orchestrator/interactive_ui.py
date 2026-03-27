@@ -11,6 +11,7 @@ from typing import Sequence
 
 import questionary
 from questionary import Choice
+from questionary.prompts.common import Separator
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -51,13 +52,21 @@ def select_option(
     Select one option by stable id. TTY: arrow keys + Enter via questionary.
     Non-TTY: numbered list and typed key (first char or full id where listed).
     """
-    ids = [c[0] for c in choices]
+    selectable = [(cid, label) for cid, label in choices if not cid.startswith("__sep__")]
+    ids = [cid for cid, _ in selectable]
+    if not ids:
+        return "exit"
     if default_id not in ids:
         default_id = ids[0]
 
     use_questionary = is_tty() and sys.stdin.isatty() and os.getenv("LAO_NO_TUI") != "1"
     if use_questionary:
-        q_choices = [Choice(title=label, value=cid) for cid, label in choices]
+        q_choices = []
+        for cid, label in choices:
+            if cid.startswith("__sep__"):
+                q_choices.append(Separator(label))
+            else:
+                q_choices.append(Choice(title=label, value=cid))
         try:
             result = questionary.select(
                 title,
@@ -81,20 +90,20 @@ def select_option(
         return result
 
     # Fallback: legacy table + typed selection by numeric key or id
-    key_to_id = {str(i + 1): cid for i, (cid, _) in enumerate(choices)}
-    key_to_id.update({cid: cid for cid, _ in choices})
+    key_to_id = {str(i + 1): cid for i, (cid, _) in enumerate(selectable)}
+    key_to_id.update({cid: cid for cid, _ in selectable})
     if is_tty():
         tbl = Table(title=title, border_style=D["PANEL_ELEVATED"])
         tbl.add_column("Key", style=D["AI_SPARK_BRIGHT"], width=6)
         tbl.add_column("Action", style=D["TEXT"])
-        for i, (cid, label) in enumerate(choices):
+        for i, (cid, label) in enumerate(selectable):
             key = str(i + 1)
             marker = " (default)" if cid == default_id else ""
             tbl.add_row(key, f"{label}{marker}")
         _console.print(tbl)
     else:
         print(title)
-        for i, (cid, label) in enumerate(choices):
+        for i, (cid, label) in enumerate(selectable):
             key = str(i + 1)
             marker = " (default)" if cid == default_id else ""
             print(f"  {key}) {label}{marker}")
@@ -111,7 +120,7 @@ def select_option(
         # allow typing the id string directly
         if picked in ids:
             return picked
-        print_info(f"Choose 1–{len(choices)} or one of: {', '.join(ids)}")
+        print_info(f"Choose 1–{len(selectable)} or one of: {', '.join(ids)}")
 
 
 def print_header(title: str, subtitle: str | None = None) -> None:

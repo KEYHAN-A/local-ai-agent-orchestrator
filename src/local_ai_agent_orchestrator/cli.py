@@ -505,33 +505,21 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
             project_rows.append((p.name, f"{status_str}  {p.path}"))
         ui.print_status_table("Known Projects", project_rows)
 
-    if show_root_warning:
-        default_id = "exit"
-    elif not has_config and not known_projects:
-        default_id = "init"
-    elif not has_config and known_projects:
-        default_id = "projects"
-    elif not lm_ok:
-        default_id = "health"
-    elif missing:
-        default_id = "configure-models"
-    else:
-        default_id = "pilot"
+    default_id = "exit" if show_root_warning else "init"
 
     menu_choices: list[tuple[str, str]] = [
+        ("init", "Initialize workspace (factory.yaml, plans/, .lao/)"),
         (
             "pilot",
             "Pilot — chat with local LLM, run tools, inspect status, and resume pipeline",
         ),
+        ("__sep__secondary", "\n\n──────── Other actions ────────\n"),
         ("run", "Run orchestrator (watch plans, process queue, auto-enter pilot when idle)"),
     ]
     if not has_config:
-        menu_choices.append(
-            ("scan", "Scan for LAO projects in subdirectories"),
-        )
+        menu_choices.append(("scan", "Scan for LAO projects in subdirectories"))
     menu_choices.extend([
         ("projects", "Manage registered LAO projects"),
-        ("init", "Initialize workspace (factory.yaml, plans/, .lao/)"),
         ("health", "Health check (LM Studio server, model mappings, guardrails)"),
         ("configure-models", "Configure role -> model name mappings"),
         ("exit", "Exit"),
