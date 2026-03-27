@@ -2,6 +2,12 @@
 
 All notable changes to **Local AI Agent Orchestrator** are recorded here. For install and usage, see [README.md](README.md).
 
+## v3.0.5 — Install scripting & distribution docs
+
+- **Install:** `scripts/install.sh` (prefers **pipx**, else `pip install --user`) and optional env `LAO_VERSION` / `LAO_PACKAGE`.
+- **Site:** `docs/install.sh` bootstrap for [lao.keyhan.info/install.sh](https://lao.keyhan.info/install.sh) (delegates to the canonical script on GitHub).
+- **Docs:** README guidance for curl-based install (trust trade-offs), Homebrew via **pipx**, and why npm is not used for this Python CLI.
+
 ## v3.0.4 — LAO Pilot Mode
 
 This release highlights **Pilot Mode**: an interactive local-LLM chat that runs workspace tools, inspects pipeline status, creates plans, and hands control back to the autopilot pipeline when you are ready.

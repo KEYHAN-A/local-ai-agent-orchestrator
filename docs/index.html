@@ -1,9 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"><!-- ASCII logo
+██╗      █████╗  ██████╗ 
+██║     ██╔══██╗██╔═══██╗
+██║     ███████║██║   ██║
+██║     ██╔══██║██║   ██║
+███████╗██║  ██║╚██████╔╝
+╚══════╝╚═╝  ╚═╝ ╚═════╝ -->
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="LAO v3.0.4 — Pilot Mode: interactive local agentic chat plus planner→coder→reviewer orchestration over LM Studio. SQLite state, project registry, unified TTY UI." />
+  <meta name="description"
+    content="LAO v3.0.5 — Pilot Mode: interactive local agentic chat plus planner→coder→reviewer orchestration over LM Studio. SQLite state, project registry, unified TTY UI." />
   <title>LAO · Pilot Mode &amp; local coding orchestration</title>
   <style>
     :root {
@@ -17,12 +24,28 @@
       --border: rgba(148, 163, 184, 0.15);
       --glow: rgba(99, 102, 241, 0.35);
     }
-    *, *::before, *::after { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      .hero-mesh, .float-soft { animation: none !important; }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
     }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      .hero-mesh,
+      .float-soft {
+        animation: none !important;
+      }
+    }
+
     body {
       margin: 0;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -31,10 +54,12 @@
       line-height: 1.65;
       overflow-x: hidden;
     }
+
     a:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 3px;
     }
+
     .hero {
       position: relative;
       min-height: 92vh;
@@ -43,6 +68,18 @@
       justify-content: center;
       padding: 4rem 1.5rem 5rem;
     }
+
+    .hero-content {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      max-width: 49.8rem;
+    }
+
+    
+
     .hero-mesh {
       position: absolute;
       inset: 0;
@@ -54,10 +91,19 @@
         linear-gradient(180deg, #030712 0%, #0f172a 50%, #030712 100%);
       animation: mesh-shift 22s ease-in-out infinite alternate;
     }
+
     @keyframes mesh-shift {
-      from { filter: hue-rotate(-6deg) brightness(1); transform: scale(1); }
-      to { filter: hue-rotate(8deg) brightness(1.05); transform: scale(1.02); }
+      from {
+        filter: hue-rotate(-6deg) brightness(1);
+        transform: scale(1);
+      }
+
+      to {
+        filter: hue-rotate(8deg) brightness(1.05);
+        transform: scale(1.02);
+      }
     }
+
     .hero-inner {
       position: relative;
       z-index: 1;
@@ -65,6 +111,7 @@
       margin: 0 auto;
       width: 100%;
     }
+
     .eyebrow {
       display: inline-flex;
       align-items: center;
@@ -76,6 +123,7 @@
       color: var(--accent);
       margin-bottom: 1rem;
     }
+
     .eyebrow span {
       display: inline-block;
       width: 6px;
@@ -84,30 +132,51 @@
       background: var(--mint);
       box-shadow: 0 0 12px var(--mint);
     }
+
     h1 {
       font-size: clamp(2.15rem, 5vw, 3.35rem);
       font-weight: 800;
       letter-spacing: -0.035em;
       line-height: 1.1;
-      margin: 0 0 1.25rem;
+      margin: 0.4rem 0px 1.1rem;
       background: linear-gradient(135deg, #fff 0%, #c7d2fe 45%, #a5b4fc 100%);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
     }
+
     .hero-lead {
-      font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+      font-size: clamp(1.05rem, 2.2vw, 1.15rem);
       color: var(--muted);
-      max-width: 38rem;
-      margin: 0 0 2rem;
+      max-width: 47rem;
+      margin: 16px 0px;
+      line-height: 30px;
+      padding: 0 4px;
     }
-    .hero-lead strong { color: #e2e8f0; font-weight: 600; }
+
+    .hero-lead strong {
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    .install-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin: 48px auto;
+    }
+
+    .install-container h2 {
+      margin: 0;
+    }
+
     .cta-row {
       display: flex;
       flex-wrap: wrap;
       gap: 0.75rem;
-      margin-bottom: 1.5rem;
     }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -121,23 +190,33 @@
       border: 1px solid transparent;
       transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
     }
-    .btn:hover { transform: translateY(-1px); }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
     .btn-primary {
       background: linear-gradient(135deg, var(--mint), #10b981);
       color: #022c22;
       box-shadow: 0 8px 32px rgba(52, 211, 153, 0.25);
     }
-    .btn-primary:hover { box-shadow: 0 12px 40px rgba(52, 211, 153, 0.35); }
+
+    .btn-primary:hover {
+      box-shadow: 0 12px 40px rgba(52, 211, 153, 0.35);
+    }
+
     .btn-ghost {
       background: rgba(15, 23, 42, 0.6);
       border-color: var(--border);
       color: var(--text);
       backdrop-filter: blur(8px);
     }
+
     .btn-ghost:hover {
       border-color: var(--accent);
       color: var(--accent);
     }
+
     .meta-badges {
       display: flex;
       flex-wrap: wrap;
@@ -145,26 +224,37 @@
       font-size: 0.78rem;
       color: var(--muted);
     }
+
     .meta-badges span {
       padding: 0.25rem 0.65rem;
       border-radius: 6px;
       background: rgba(15, 23, 42, 0.8);
       border: 1px solid var(--border);
     }
+
     .meta-badges a {
       display: inline-flex;
       align-items: center;
       text-decoration: none;
     }
+
     .meta-badges img {
       height: 20px;
       border-radius: 6px;
     }
+
     section {
       padding: 4rem 1.5rem;
       max-width: 72rem;
       margin: 0 auto;
     }
+
+    section.smaller {
+      padding: 4rem 1.5rem;
+      max-width: 60rem;
+      margin: 0 auto;
+    }
+
     .section-title {
       font-size: 0.8rem;
       font-weight: 700;
@@ -173,23 +263,32 @@
       color: var(--accent);
       margin: 0 0 0.5rem;
     }
+
     h2 {
       font-size: clamp(1.6rem, 3vw, 2rem);
       font-weight: 700;
       letter-spacing: -0.02em;
       margin: 0 0 2rem;
     }
+
     .feature-grid {
       display: grid;
       gap: 1.25rem;
       grid-template-columns: 1fr;
     }
+
     @media (min-width: 640px) {
-      .feature-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
+
     @media (min-width: 960px) {
-      .feature-grid { grid-template-columns: repeat(3, 1fr); }
+      .feature-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
     }
+
     .card {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -198,20 +297,24 @@
       backdrop-filter: blur(12px);
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+
     .card:hover {
       border-color: rgba(129, 140, 248, 0.35);
       box-shadow: 0 0 0 1px var(--glow);
     }
+
     .card h3 {
       margin: 0 0 0.5rem;
       font-size: 1.05rem;
       font-weight: 650;
     }
+
     .card p {
       margin: 0;
       font-size: 0.92rem;
       color: var(--muted);
     }
+
     .card .tag {
       display: inline-block;
       font-size: 0.7rem;
@@ -221,14 +324,19 @@
       color: var(--mint);
       margin-bottom: 0.5rem;
     }
+
     .steps {
       display: grid;
       gap: 1.5rem;
       counter-reset: step;
     }
+
     @media (min-width: 768px) {
-      .steps { grid-template-columns: repeat(4, 1fr); }
+      .steps {
+        grid-template-columns: repeat(4, 1fr);
+      }
     }
+
     .step {
       position: relative;
       padding: 1.25rem;
@@ -236,6 +344,7 @@
       background: rgba(15, 23, 42, 0.5);
       border: 1px solid var(--border);
     }
+
     .step::before {
       counter-increment: step;
       content: counter(step);
@@ -251,8 +360,18 @@
       font-size: 0.9rem;
       margin-bottom: 0.75rem;
     }
-    .step h3 { margin: 0 0 0.35rem; font-size: 1rem; }
-    .step p { margin: 0; font-size: 0.88rem; color: var(--muted); }
+
+    .step h3 {
+      margin: 0 0 0.35rem;
+      font-size: 1rem;
+    }
+
+    .step p {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
     pre {
       margin: 0;
       padding: 1.25rem 1.35rem;
@@ -263,7 +382,12 @@
       font-size: 0.84rem;
       line-height: 1.55;
     }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+    code,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
     .links ul {
       list-style: none;
       padding: 0;
@@ -271,12 +395,17 @@
       display: grid;
       gap: 0.65rem;
     }
+
     .links a {
       color: var(--accent);
       text-decoration: none;
       font-weight: 500;
     }
-    .links a:hover { text-decoration: underline; }
+
+    .links a:hover {
+      text-decoration: underline;
+    }
+
     footer {
       padding: 3rem 1.5rem;
       border-top: 1px solid var(--border);
@@ -286,49 +415,65 @@
       max-width: 56rem;
       margin: 0 auto;
     }
-    footer a { color: var(--accent); text-decoration: none; }
-    footer a:hover { text-decoration: underline; }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
 
     .hero-ascii {
-      margin: 0 0 1.25rem;
-      padding: 1rem 1.25rem;
+      padding: 0;
       border-radius: 14px;
-      background: rgba(15, 23, 42, 0.75);
-      border: 1px solid var(--border);
+      background: none;
+      border: none;
       color: var(--accent);
-      font-size: clamp(0.62rem, 1.6vw, 0.78rem);
+      font-size: clamp(0.62rem, 1.6vw, 1.3rem);
       line-height: 1.35;
       letter-spacing: 0.02em;
-      box-shadow: 0 0 32px var(--glow);
+      box-shadow: none;
       overflow-x: auto;
       max-width: 100%;
     }
+
     .hero-head {
       display: flex;
       flex-direction: column;
       gap: 0.25rem;
     }
+
     @media (min-width: 720px) {
       .hero-head {
         flex-direction: row;
         align-items: flex-start;
         gap: 1.5rem;
       }
-      .hero-ascii { flex: 0 0 auto; margin-bottom: 0; }
-      .hero-head-text { flex: 1; min-width: 0; }
+
+      .hero-ascii {
+        flex: 0 0 auto;
+        margin-bottom: 0;
+      }
+
+      .hero-head-text {
+        flex: 1;
+        min-width: 0;
+        margin-bottom: 20px;
+      }
     }
 
     .terminal-mock {
-      margin-top: 1.5rem;
+      margin: 1.6rem 0;
       border-radius: 14px;
       border: 1px solid var(--border);
       overflow: hidden;
       background: #020617;
       text-align: left;
-      max-width: 42rem;
-      margin-left: auto;
-      margin-right: auto;
+      max-width: 48.8rem;
     }
+
     .terminal-mock .tb {
       display: flex;
       align-items: center;
@@ -339,6 +484,7 @@
       font-size: 0.72rem;
       color: var(--muted);
     }
+
     .terminal-mock .tb i {
       display: inline-block;
       width: 10px;
@@ -346,10 +492,25 @@
       border-radius: 50%;
       background: #475569;
     }
-    .terminal-mock .tb i:nth-child(1) { background: #f87171; }
-    .terminal-mock .tb i:nth-child(2) { background: #fbbf24; }
-    .terminal-mock .tb i:nth-child(3) { background: #4ade80; }
-    .terminal-mock .tb span { margin-left: auto; font-size: 0.68rem; opacity: 0.85; }
+
+    .terminal-mock .tb i:nth-child(1) {
+      background: #f87171;
+    }
+
+    .terminal-mock .tb i:nth-child(2) {
+      background: #fbbf24;
+    }
+
+    .terminal-mock .tb i:nth-child(3) {
+      background: #4ade80;
+    }
+
+    .terminal-mock .tb span {
+      margin-left: auto;
+      font-size: 0.68rem;
+      opacity: 0.85;
+    }
+
     .terminal-mock pre {
       margin: 0;
       border: none;
@@ -359,8 +520,15 @@
       line-height: 1.5;
       color: #e2e8f0;
     }
-    .terminal-mock .muted { color: var(--muted); }
-    .terminal-mock .accent { color: var(--accent); }
+
+    .terminal-mock .muted {
+      color: var(--muted);
+    }
+
+    .terminal-mock .accent {
+      color: var(--accent);
+    }
+
     .terminal-mock .cursor {
       display: inline-block;
       width: 0.55em;
@@ -370,12 +538,24 @@
       background: var(--accent);
       animation: cursor-pulse 1s step-end infinite;
     }
+
     @keyframes cursor-pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0;
+      }
     }
+
     @media (prefers-reduced-motion: reduce) {
-      .terminal-mock .cursor { animation: none; opacity: 1; }
+      .terminal-mock .cursor {
+        animation: none;
+        opacity: 1;
+      }
     }
 
     .shots {
@@ -383,9 +563,15 @@
       gap: 1.25rem;
       grid-template-columns: 1fr;
     }
+
     @media (min-width: 900px) {
-      .shots { grid-template-columns: 1fr 1fr; align-items: start; }
+      .shots {
+        display: flex;
+        flex-direction: column;
+        align-items: start;
+      }
     }
+
     .shot {
       margin: 0;
       border-radius: 16px;
@@ -393,96 +579,132 @@
       border: 1px solid var(--border);
       background: rgba(15, 23, 42, 0.5);
     }
+
     .shot img {
       display: block;
       width: 100%;
       height: auto;
       vertical-align: middle;
     }
+
     .shot figcaption {
       padding: 0.65rem 1rem 0.85rem;
       font-size: 0.88rem;
       color: var(--muted);
       border-top: 1px solid var(--border);
     }
+
     .steps.cols-6 {
       grid-template-columns: 1fr;
     }
+
     @media (min-width: 768px) {
-      .steps.cols-6 { grid-template-columns: repeat(3, 1fr); }
+      .steps.cols-6 {
+        grid-template-columns: repeat(3, 1fr);
+      }
     }
+
     @media (min-width: 1100px) {
-      .steps.cols-6 { grid-template-columns: repeat(6, 1fr); }
+      .steps.cols-6 {
+        grid-template-columns: repeat(3, 1fr);
+      }
     }
   </style>
 </head>
+
 <body>
   <header class="hero" id="top">
     <div class="hero-mesh" aria-hidden="true"></div>
     <div class="hero-inner">
-      <p class="eyebrow"><span></span> v3.0.4 · Pilot Mode · LM Studio · Local-first</p>
+      <p class="eyebrow"><span></span> v3.0.5 · Pilot Mode · LM Studio · Local-first</p>
       <div class="hero-head">
-        <pre class="hero-ascii" aria-label="LAO ASCII logo"> ██╗      █████╗  ██████╗ 
+        <div class="hero-head-text">
+          <h1>Orchestration and <br> an interactive Pilot in one terminal</h1>
+
+          <div class="meta-badges">
+            <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener"
+              aria-label="Latest GitHub release">
+              <img
+                src="https://img.shields.io/github/v/release/KEYHAN-A/local-ai-agent-orchestrator?display_name=tag&label=GitHub%20release&logo=github"
+                alt="Latest GitHub release" />
+            </a>
+            <a href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener"
+              aria-label="Latest PyPI version">
+              <img src="https://img.shields.io/pypi/v/local-ai-agent-orchestrator?label=PyPI%20version&logo=pypi"
+                alt="Latest PyPI version" />
+            </a>
+            <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener">
+              <span>Release notes</span>
+            </a>
+            <span>GPL-3.0-only</span>
+            <span>OpenAI SDK → LM Studio</span>
+            <span>CLI: <code style="font-size: inherit;">lao</code></span>
+          </div>
+
+          <div class="terminal-mock" aria-label="Example LAO pilot prompt">
+            <div class="tb"><i></i><i></i><i></i><span>LAO · Pilot</span></div>
+            <pre>
+ ██╗      █████╗  ██████╗ 
  ██║     ██╔══██╗██╔═══██╗
  ██║     ███████║██║   ██║
  ██║     ██╔══██║██║   ██║
  ███████╗██║  ██║╚██████╔╝
- ╚══════╝╚═╝  ╚═╝ ╚═════╝</pre>
-        <div class="hero-head-text">
-      <h1>Orchestration and an interactive Pilot in one terminal</h1>
-      <p class="hero-lead">
-        <strong>Local AI Agent Orchestrator (LAO)</strong> runs a disciplined
-        <strong>planner → coder → reviewer</strong> pipeline—and when work pauses, <strong>Pilot Mode</strong> gives you a Cursor-style chat: tools, queue status, plans, and <code>/resume</code> back to autopilot.
-        Multi-project? Use <code>lao projects</code>. State stays in <strong>SQLite</strong>; optional per-plan <strong>Git</strong> keeps history honest.
-      </p>
+ ╚══════╝╚═╝  ╚═╝ ╚═════╝
+     
+ <span class="muted">16:55:47 ▶</span> [Pilot] Entering Pilot Mode
+ <span class="muted">…</span> <span class="accent">weaving context from your workspace</span>
+    
+  <span class="muted">❯</span> hi<span class="cursor" aria-hidden="true"></span>
+    
+ <span class="muted">/help  /status  /resume  /project</span>  ·  Enter send · Alt+Enter newline</pre>
+</div>
+
+
+          <p class="hero-lead">
+            <strong>Local AI Agent Orchestrator (LAO)</strong> runs a disciplined
+            <strong>planner → coder → reviewer</strong> pipeline—and when work pauses,
+            <strong>Pilot Mode</strong> gives you a chat similar to Claude Code or Cursor: tools, queue status, plans,
+            and
+            <code>/resume</code> back to autopilot. Multi-project? Use <code>lao projects</code>. State stays in
+            <strong>SQLite</strong>; optional per-plan <strong>Git</strong> keeps history honest.
+          </p>
         </div>
       </div>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View on GitHub</a>
-        <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install from PyPI</a>
-      </div>
-      <div class="meta-badges">
-        <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener" aria-label="Latest GitHub release">
-          <img src="https://img.shields.io/github/v/release/KEYHAN-A/local-ai-agent-orchestrator?display_name=tag&label=GitHub%20release&logo=github" alt="Latest GitHub release" />
-        </a>
-        <a href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener" aria-label="Latest PyPI version">
-          <img src="https://img.shields.io/pypi/v/local-ai-agent-orchestrator?label=PyPI%20version&logo=pypi" alt="Latest PyPI version" />
-        </a>
-        <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener">
-          <span>Release notes</span>
-        </a>
-        <span>GPL-3.0-only</span>
-        <span>OpenAI SDK → LM Studio</span>
-        <span>CLI: <code style="font-size: inherit;">lao</code></span>
-      </div>
-      <div class="terminal-mock" aria-label="Example LAO pilot prompt">
-        <div class="tb"><i></i><i></i><i></i><span>LAO · Pilot</span></div>
-        <pre><span class="muted">16:55:47 ▶</span> [Pilot] Entering Pilot Mode
-<span class="muted">…</span> <span class="accent">weaving context from your workspace</span>
 
-  <span class="muted">❯</span> hi<span class="cursor" aria-hidden="true"></span>
 
-<span class="muted">/help  /status  /resume  /project</span>  ·  Enter send · Alt+Enter newline</pre>
-      </div>
+
     </div>
   </header>
 
-  <section id="experience" aria-labelledby="experience-h">
-    <p class="section-title" id="experience-h">In the terminal</p>
-    <h2>See LAO v3.0.4</h2>
-    <p style="margin:-1rem 0 1.5rem;color:var(--muted);font-size:0.95rem;max-width:40rem;">
-      Grouped home menu for first-time operators; Pilot chat with scrollback, slash commands, and a live status strip—same build you get from <code>pip install</code>.
-    </p>
-    <div class="shots">
-      <figure class="shot">
-        <img src="assets/lao-home-menu.png" width="1200" height="800" alt="LAO interactive home menu showing Initialize workspace, Pilot, and grouped other actions" loading="lazy" decoding="async" />
-        <figcaption>Home menu — primary actions first, then <strong>Other actions</strong>, <strong>Exit</strong> last.</figcaption>
-      </figure>
-      <figure class="shot">
-        <img src="assets/lao-pilot-mode.png" width="1200" height="800" alt="LAO Pilot Mode with LAO ASCII logo, chat transcript, and status bar" loading="lazy" decoding="async" />
-        <figcaption>Pilot Mode — unified UI, tool rounds, token line, <strong>/resume</strong> to return to the pipeline.</figcaption>
-      </figure>
+  <section id="install" aria-labelledby="install-h" class="smaller">
+    <p class="section-title" id="install-h">Quick start</p>
+    <div class="install-container">
+      <h2>Install and run in minutes</h2>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View
+          on
+          GitHub</a>
+        <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install
+          from PyPI</a>
+      </div>
     </div>
+    <p style="margin:-0.5rem 0 0.75rem;color:var(--muted);font-size:0.92rem;max-width:44rem;">
+      One-liner (uses <strong>pipx</strong> if installed, else <code>pip install --user</code>):
+      <code style="white-space:normal;">curl -fsSL https://lao.keyhan.info/install.sh | bash</code>
+      — or audit the same script from
+      <a href="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh"
+        rel="noopener">GitHub raw</a>.
+    </p>
+    <pre><code>pip install local-ai-agent-orchestrator
+lao
+# choose "Initialize workspace" or "Pilot", or run `lao projects scan` from a parent folder
+lao health
+lao run
+lao pilot</code></pre>
+    <p style="margin-top:1rem;color:var(--muted);font-size:0.92rem;">
+      Existing project workflow: clone/open your repo into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code>
+      so LAO works directly in that codebase folder.
+    </p>
   </section>
 
   <section id="features" aria-labelledby="features-h">
@@ -490,45 +712,56 @@
     <h2>Built to squeeze serious work out of local models</h2>
     <div class="feature-grid">
       <article class="card">
-        <span class="tag">v3.0.4</span>
+        <span class="tag">v3.0.5</span>
         <h3>Pilot Mode</h3>
-        <p>Interactive agent with filesystem + shell tools, pipeline introspection, plan creation, <code>/project</code> switching, and guardrails when tools error repeatedly. Double Ctrl+C exits the prompt.</p>
+        <p>Interactive agent with filesystem + shell tools, pipeline introspection, plan creation, <code>/project</code>
+          switching, and guardrails when tools error repeatedly. Double Ctrl+C exits the prompt.</p>
       </article>
       <article class="card">
         <h3>Three-agent pipeline</h3>
-        <p>Architect breaks plans into micro-tasks. Coder edits files with tools. Reviewer approves or sends structured rework—without bloated agent-framework scaffolding.</p>
+        <p>Architect breaks plans into micro-tasks. Coder edits files with tools. Reviewer approves or sends structured
+          rework—without bloated agent-framework scaffolding.</p>
       </article>
       <article class="card">
         <h3>SQLite backbone</h3>
-        <p>WAL-mode queue survives crashes; retries, run logs, and token tallies stay queryable while jobs churn overnight.</p>
+        <p>WAL-mode queue survives crashes; retries, run logs, and token tallies stay queryable while jobs churn
+          overnight.</p>
       </article>
       <article class="card">
         <h3>Memory-aware swaps</h3>
-        <p>Loads one big LLM at a time, unloads the rest, and waits for unified memory to settle—less swap thrash on Apple Silicon when models are tens of GB.</p>
+        <p>Loads one big LLM at a time, unloads the rest, and waits for unified memory to settle—less swap thrash on
+          Apple Silicon when models are tens of GB.</p>
       </article>
       <article class="card">
         <h3>Semantic retrieval</h3>
-        <p>Optional embedder (e.g. Nomic) narrows file context before coding so small local windows still hit the right files.</p>
+        <p>Optional embedder (e.g. Nomic) narrows file context before coding so small local windows still hit the right
+          files.</p>
       </article>
       <article class="card">
         <span class="tag">New in v1.3</span>
         <h3>Git you can trust</h3>
-        <p>Per-plan repos get <code>LAO_PLAN.md</code>, <code>LAO_TASKS.json</code>, and commits named <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable and easy to revert.</p>
+        <p>Per-plan repos get <code>LAO_PLAN.md</code>, <code>LAO_TASKS.json</code>, and commits named
+          <code>lao(coder): …</code> / <code>lao(reviewer): …</code> so progress is traceable and easy to revert.
+        </p>
       </article>
       <article class="card">
         <span class="tag">v2.0+</span>
         <h3>Unified interactive CLI</h3>
-        <p>Home menu, guided init, model remap, orchestrator run, and Pilot share one coherent TTY language (Rich + prompt_toolkit) with clear next actions.</p>
+        <p>Home menu, guided init, model remap, orchestrator run, and Pilot share one coherent TTY language (Rich +
+          prompt_toolkit) with clear next actions.</p>
       </article>
       <article class="card">
-        <span class="tag">v3.0.4</span>
+        <span class="tag">v3.0.5</span>
         <h3>Project registry</h3>
-        <p><code>lao projects scan|use|list</code> tracks known workspaces under <code>~/.lao/projects.json</code> so you are not stuck in a parent directory without <code>factory.yaml</code>.</p>
+        <p><code>lao projects scan|use|list</code> tracks known workspaces under <code>~/.lao/projects.json</code> so
+          you are not stuck in a parent directory without <code>factory.yaml</code>.</p>
       </article>
     </div>
   </section>
 
-  <section id="flow" aria-labelledby="flow-h">
+
+
+  <section id="flow" aria-labelledby="flow-h" class="smaller">
     <p class="section-title" id="flow-h">Flow</p>
     <h2>From setup to Pilot and back</h2>
     <div class="steps cols-6">
@@ -559,27 +792,42 @@
     </div>
   </section>
 
-  <section id="install" aria-labelledby="install-h">
-    <p class="section-title" id="install-h">Quick start</p>
-    <h2>Install and run in minutes</h2>
-    <pre><code>pip install local-ai-agent-orchestrator
-lao
-# choose "Initialize workspace" or "Pilot", or run `lao projects scan` from a parent folder
-lao health
-lao run
-lao pilot</code></pre>
-    <p style="margin-top:1rem;color:var(--muted);font-size:0.92rem;">
-      Existing project workflow: clone/open your repo into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code> so LAO works directly in that codebase folder.
+  <section id="experience" class="smaller" aria-labelledby="experience-h">
+    <p class="section-title" id="experience-h">In the terminal</p>
+    <h2>See LAO v3.0.5</h2>
+    <p style="margin:-1rem 0 1.5rem;color:var(--muted);font-size:0.95rem;max-width:40rem;">
+      Grouped home menu for first-time operators; Pilot chat with scrollback, slash commands, and a live status
+      strip—same build you get from <code>pip install</code>.
     </p>
+    <div class="shots">
+      <figure class="shot">
+        <img src="assets/lao-home-menu.png" width="1200" height="800"
+          alt="LAO interactive home menu showing Initialize workspace, Pilot, and grouped other actions" loading="lazy"
+          decoding="async" />
+        <figcaption>Home menu — primary actions first, then <strong>Other actions</strong>, <strong>Exit</strong> last.
+        </figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/lao-pilot-mode.png" width="1200" height="800"
+          alt="LAO Pilot Mode with LAO ASCII logo, chat transcript, and status bar" loading="lazy" decoding="async" />
+        <figcaption>Pilot Mode — unified UI, tool rounds, token line, <strong>/resume</strong> to return to the
+          pipeline.</figcaption>
+      </figure>
+    </div>
   </section>
 
   <section class="links" id="docs" aria-labelledby="docs-h">
     <p class="section-title" id="docs-h">Docs</p>
     <h2>On GitHub</h2>
     <ul>
-      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">Configuration</a> — <code>factory.yaml</code>, paths, Git options</li>
-      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md">Architecture</a> — modules, queue, Git cadence</li>
-      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/README.md">README</a> — full reference &amp; changelog</li>
+      <li><a
+          href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/CONFIGURATION.md">Configuration</a>
+        — <code>factory.yaml</code>, paths, Git options</li>
+      <li><a
+          href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+        — modules, queue, Git cadence</li>
+      <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/blob/main/README.md">README</a> — full
+        reference &amp; changelog</li>
       <li><a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/issues">Issues</a> — feedback &amp; bugs</li>
     </ul>
   </section>
@@ -592,4 +840,5 @@ lao pilot</code></pre>
     </p>
   </footer>
 </body>
+
 </html>
