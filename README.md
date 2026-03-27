@@ -1,6 +1,6 @@
 # Local AI Agent Orchestrator (LAO)
 
-**LAO** (**v3.0.5+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
+**LAO** (**v3.0.6+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -22,12 +22,12 @@
 
 ## Table of contents
 
+- [Installation](#installation)
 - [Features](#features)
 - [LAO Pilot Mode](#lao-pilot-mode-v304)
 - [Project commands and multi-repo workflows](#project-commands-and-multi-repo-workflows)
 - [Why the OpenAI SDK (not LangChain / CrewAI)?](#why-the-openai-sdk-not-langchain--crewai)
 - [Requirements](#requirements)
-- [Installation](#installation)
 - [Quick start](#quick-start)
 - [Configuration overview](#configuration-overview)
 - [CLI reference](#cli-reference)
@@ -38,6 +38,76 @@
 - [Security](#security)
 - [Contributing](#contributing)
 - [Releases](#releases)
+
+---
+
+## Installation
+
+### From PyPI (recommended)
+
+```bash
+pip install local-ai-agent-orchestrator
+pip install -U local-ai-agent-orchestrator   # upgrade
+```
+
+The CLI entry point is **`lao`** (also `local-ai-agent-orchestrator`).
+
+### One-line installer (curl)
+
+The canonical script in git is [`scripts/install.sh`](scripts/install.sh). It prefers **pipx** when available (isolated app environment), otherwise **`pip install --user`**.
+
+**Short URL (GitHub Pages):**
+
+```bash
+curl -fsSL https://lao.keyhan.info/install.sh | bash
+```
+
+That bootstrap is a tiny script that downloads the same implementation from GitHub `main`—so there is only one full installer to maintain.
+
+**Direct from GitHub (easy to audit against the repo):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh | bash
+```
+
+Trust trade-off: piping to `bash` always means you trust the host and transport. Many people prefer the **raw.githubusercontent.com** URL because the path maps cleanly to `main/scripts/install.sh` in this repository. The **lao.keyhan.info** URL is the same behavior after one redirect through the small bootstrap.
+
+Optional environment variables: **`LAO_VERSION`** (pin a release, e.g. `3.0.6`), **`LAO_PACKAGE`** (override PyPI name).
+
+### Homebrew ecosystem
+
+LAO is a **Python** package on PyPI. Homebrew does not replace PyPI here; the usual approach on macOS is to use Homebrew’s **pipx** and install LAO into an isolated environment:
+
+```bash
+brew install pipx
+pipx ensurepath
+pipx install local-ai-agent-orchestrator
+# later: pipx upgrade local-ai-agent-orchestrator
+```
+
+A first-party **Homebrew formula in homebrew-core** is possible but requires vendoring every Python dependency with fixed URLs and checksums (no PyPI access during `brew install`). If you want a custom **tap** (`brew install yourname/tap/lao`), generate or hand-maintain a formula with something like [homebrew-pypi-poet](https://github.com/tdsmith/homebrew-pypi-poet) or follow [Homebrew’s Python guide](https://docs.brew.sh/Python-for-Formula-Authors).
+
+### npm
+
+LAO is implemented in **Python**, not JavaScript. Publishing an **npm** package that only shells out to `pip` would be confusing to npm users and fragile across machines. Use **pip**, **pipx**, or the curl installer above instead.
+
+### Editable install (development)
+
+```bash
+git clone https://github.com/KEYHAN-A/local-ai-agent-orchestrator.git
+cd local-ai-agent-orchestrator
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+### Without installing the package
+
+```bash
+python main.py health
+```
+
+(`main.py` adds `src/` for you.)
 
 ---
 
@@ -128,7 +198,7 @@ flowchart LR
   pilot --> home2["Exit"]
 ```
 
-Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (latest: `v3.0.5`; Pilot highlights in `v3.0.4`).
+Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (latest: `v3.0.6`; Pilot highlights in `v3.0.4`).
 
 ---
 
@@ -153,76 +223,6 @@ LAO calls the **OpenAI Python SDK** directly against your local server to avoid 
 - **Apple Silicon:** if large models fail to load, relax LM Studio **Model Loading Guardrails** (Developer → Server Settings)
 
 Full reference: **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
-
----
-
-## Installation
-
-### From PyPI (recommended)
-
-```bash
-pip install local-ai-agent-orchestrator
-pip install -U local-ai-agent-orchestrator   # upgrade
-```
-
-The CLI entry point is **`lao`** (also `local-ai-agent-orchestrator`).
-
-### One-line installer (curl)
-
-The canonical script in git is [`scripts/install.sh`](scripts/install.sh). It prefers **pipx** when available (isolated app environment), otherwise **`pip install --user`**.
-
-**Short URL (GitHub Pages):**
-
-```bash
-curl -fsSL https://lao.keyhan.info/install.sh | bash
-```
-
-That bootstrap is a tiny script that downloads the same implementation from GitHub `main`—so there is only one full installer to maintain.
-
-**Direct from GitHub (easy to audit against the repo):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh | bash
-```
-
-Trust trade-off: piping to `bash` always means you trust the host and transport. Many people prefer the **raw.githubusercontent.com** URL because the path maps cleanly to `main/scripts/install.sh` in this repository. The **lao.keyhan.info** URL is the same behavior after one redirect through the small bootstrap.
-
-Optional environment variables: **`LAO_VERSION`** (pin a release, e.g. `3.0.5`), **`LAO_PACKAGE`** (override PyPI name).
-
-### Homebrew ecosystem
-
-LAO is a **Python** package on PyPI. Homebrew does not replace PyPI here; the usual approach on macOS is to use Homebrew’s **pipx** and install LAO into an isolated environment:
-
-```bash
-brew install pipx
-pipx ensurepath
-pipx install local-ai-agent-orchestrator
-# later: pipx upgrade local-ai-agent-orchestrator
-```
-
-A first-party **Homebrew formula in homebrew-core** is possible but requires vendoring every Python dependency with fixed URLs and checksums (no PyPI access during `brew install`). If you want a custom **tap** (`brew install yourname/tap/lao`), generate or hand-maintain a formula with something like [homebrew-pypi-poet](https://github.com/tdsmith/homebrew-pypi-poet) or follow [Homebrew’s Python guide](https://docs.brew.sh/Python-for-Formula-Authors).
-
-### npm
-
-LAO is implemented in **Python**, not JavaScript. Publishing an **npm** package that only shells out to `pip` would be confusing to npm users and fragile across machines. Use **pip**, **pipx**, or the curl installer above instead.
-
-### Editable install (development)
-
-```bash
-git clone https://github.com/KEYHAN-A/local-ai-agent-orchestrator.git
-cd local-ai-agent-orchestrator
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
-```
-
-### Without installing the package
-
-```bash
-python main.py health
-```
-
-(`main.py` adds `src/` for you.)
 
 ---
 
@@ -399,4 +399,4 @@ Issues and pull requests are welcome. See **[docs/CONTRIBUTING.md](docs/CONTRIBU
 - **Install the latest build:** `pip install -U local-ai-agent-orchestrator`
 - **GitHub Releases:** [github.com/KEYHAN-A/local-ai-agent-orchestrator/releases](https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases)
 
-**Recent highlights (v3.0.5):** curl/pipx-friendly **install scripts** and clearer **Homebrew (pipx)** / **npm** guidance; **LAO Pilot Mode** (v3.0.4+) adds interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, and hardened terminal UX. See **[CHANGELOG.md](CHANGELOG.md)**.
+**Recent highlights (v3.0.6):** README **Installation** surfaced up front (TOC + section order) alongside curl/pipx install paths; **LAO Pilot Mode** (v3.0.4+) adds interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, and hardened terminal UX. See **[CHANGELOG.md](CHANGELOG.md)**.

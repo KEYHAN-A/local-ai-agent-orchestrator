@@ -10,7 +10,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description"
-    content="LAO v3.0.5 — Pilot Mode: interactive local agentic chat plus planner→coder→reviewer orchestration over LM Studio. SQLite state, project registry, unified TTY UI." />
+    content="Install LAO via pip or one-line curl; then Pilot Mode + planner→coder→reviewer orchestration for LM Studio. SQLite state, project registry, unified TTY UI. LAO v3.0.6." />
   <title>LAO · Pilot Mode &amp; local coding orchestration</title>
   <style>
     :root {
@@ -482,67 +482,7 @@
     </a>
   </nav>
 
-  <!-- ─── HERO ─── -->
-  <header class="hero" id="top">
-    <div class="hero-mesh" aria-hidden="true"></div>
-    <div class="hero-inner">
-      <p class="eyebrow"><span></span> v3.0.5 · Pilot Mode · LM Studio · Local-first</p>
-      <div class="hero-head">
-        <div class="hero-head-text">
-          <h1>Orchestration and <br> an interactive Pilot in one terminal</h1>
-
-          <div class="meta-badges">
-            <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener"
-              aria-label="Latest GitHub release">
-              <img
-                src="https://img.shields.io/github/v/release/KEYHAN-A/local-ai-agent-orchestrator?display_name=tag&label=GitHub%20release&logo=github"
-                alt="Latest GitHub release" />
-            </a>
-            <a href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener"
-              aria-label="Latest PyPI version">
-              <img src="https://img.shields.io/pypi/v/local-ai-agent-orchestrator?label=PyPI%20version&logo=pypi"
-                alt="Latest PyPI version" />
-            </a>
-            <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener">
-              <span>Release notes</span>
-            </a>
-            <span>GPL-3.0-only</span>
-            <span>OpenAI SDK → LM Studio</span>
-            <span>CLI: <code style="font-size:inherit;padding:0;background:none;border:none;">lao</code></span>
-          </div>
-
-          <div class="terminal-mock" aria-label="Example LAO pilot prompt">
-            <div class="tb"><i></i><i></i><i></i><span>LAO · Pilot</span></div>
-            <pre>
- ██╗      █████╗  ██████╗ 
- ██║     ██╔══██╗██╔═══██╗
- ██║     ███████║██║   ██║
- ██║     ██╔══██║██║   ██║
- ███████╗██║  ██║╚██████╔╝
- ╚══════╝╚═╝  ╚═╝ ╚═════╝
-     
- <span class="muted">16:55:47 ▶</span> [Pilot] Entering Pilot Mode
- <span class="muted">…</span> <span class="accent">weaving context from your workspace</span>
-    
-  <span class="muted">❯</span> hi<span class="cursor" aria-hidden="true"></span>
-    
- <span class="muted">/help  /status  /resume  /project</span>  ·  Enter send · Alt+Enter newline</pre>
-          </div>
-
-          <p class="hero-lead">
-            <strong>Local AI Agent Orchestrator (LAO)</strong> runs a disciplined
-            <strong>planner → coder → reviewer</strong> pipeline—and when work pauses,
-            <strong>Pilot Mode</strong> gives you a chat similar to Claude Code or Cursor: tools, queue status, plans,
-            and
-            <code style="padding:0;background:none;border:none;">/resume</code> back to autopilot. Multi-project? Use <code style="padding:0;background:none;border:none;">lao projects</code>. State stays in
-            <strong>SQLite</strong>; optional per-plan <strong>Git</strong> keeps history honest.
-          </p>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- ─── INSTALL ─── -->
+  <!-- ─── INSTALL (first in page flow) ─── -->
   <section id="install" aria-labelledby="install-h" class="smaller">
     <div class="reveal">
       <p class="section-title" id="install-h">Quick start</p>
@@ -617,6 +557,66 @@
 
   <hr class="section-divider" />
 
+  <!-- ─── HERO ─── -->
+  <header class="hero" id="top">
+    <div class="hero-mesh" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <p class="eyebrow"><span></span> v3.0.6 · Install first · Pilot Mode · LM Studio</p>
+      <div class="hero-head">
+        <div class="hero-head-text">
+          <h1>Orchestration and <br> an interactive Pilot in one terminal</h1>
+
+          <div class="meta-badges">
+            <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener"
+              aria-label="Latest GitHub release">
+              <img
+                src="https://img.shields.io/github/v/release/KEYHAN-A/local-ai-agent-orchestrator?display_name=tag&label=GitHub%20release&logo=github"
+                alt="Latest GitHub release" />
+            </a>
+            <a href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener"
+              aria-label="Latest PyPI version">
+              <img src="https://img.shields.io/pypi/v/local-ai-agent-orchestrator?label=PyPI%20version&logo=pypi"
+                alt="Latest PyPI version" />
+            </a>
+            <a href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases/latest" rel="noopener">
+              <span>Release notes</span>
+            </a>
+            <span>GPL-3.0-only</span>
+            <span>OpenAI SDK → LM Studio</span>
+            <span>CLI: <code style="font-size:inherit;padding:0;background:none;border:none;">lao</code></span>
+          </div>
+
+          <div class="terminal-mock" aria-label="Example LAO pilot prompt">
+            <div class="tb"><i></i><i></i><i></i><span>LAO · Pilot</span></div>
+            <pre>
+ ██╗      █████╗  ██████╗ 
+ ██║     ██╔══██╗██╔═══██╗
+ ██║     ███████║██║   ██║
+ ██║     ██╔══██║██║   ██║
+ ███████╗██║  ██║╚██████╔╝
+ ╚══════╝╚═╝  ╚═╝ ╚═════╝
+     
+ <span class="muted">16:55:47 ▶</span> [Pilot] Entering Pilot Mode
+ <span class="muted">…</span> <span class="accent">weaving context from your workspace</span>
+    
+  <span class="muted">❯</span> hi<span class="cursor" aria-hidden="true"></span>
+    
+ <span class="muted">/help  /status  /resume  /project</span>  ·  Enter send · Alt+Enter newline</pre>
+          </div>
+
+          <p class="hero-lead">
+            <strong>Local AI Agent Orchestrator (LAO)</strong> runs a disciplined
+            <strong>planner → coder → reviewer</strong> pipeline—and when work pauses,
+            <strong>Pilot Mode</strong> gives you a chat similar to Claude Code or Cursor: tools, queue status, plans,
+            and
+            <code style="padding:0;background:none;border:none;">/resume</code> back to autopilot. Multi-project? Use <code style="padding:0;background:none;border:none;">lao projects</code>. State stays in
+            <strong>SQLite</strong>; optional per-plan <strong>Git</strong> keeps history honest.
+          </p>
+        </div>
+      </div>
+    </div>
+  </header>
+
   <!-- ─── FEATURES ─── -->
   <section id="features" aria-labelledby="features-h">
     <div class="reveal">
@@ -626,7 +626,7 @@
     <div class="feature-grid">
       <article class="card reveal">
         <div class="card-icon mint-bg">🧭</div>
-        <span class="tag">v3.0.5</span>
+        <span class="tag">v3.0.6</span>
         <h3>Pilot Mode</h3>
         <p>Interactive agent with filesystem + shell tools, pipeline introspection, plan creation, <code>/project</code>
           switching, and guardrails when tools error repeatedly.</p>
@@ -671,7 +671,7 @@
       </article>
       <article class="card reveal reveal-delay-1">
         <div class="card-icon mint-bg">📂</div>
-        <span class="tag">v3.0.5</span>
+        <span class="tag">v3.0.6</span>
         <h3>Project registry</h3>
         <p><code>lao projects scan|use|list</code> tracks known workspaces under <code>~/.lao/projects.json</code> so
           you aren't stuck in a parent directory without <code>factory.yaml</code>.</p>
@@ -721,7 +721,7 @@
   <section id="experience" class="smaller" aria-labelledby="experience-h">
     <div class="reveal">
       <p class="section-title" id="experience-h">In the terminal</p>
-      <h2>See LAO v3.0.5</h2>
+      <h2>See LAO v3.0.6</h2>
       <p style="margin:-1rem 0 1.5rem;color:var(--muted);font-size:0.95rem;max-width:40rem;">
         Grouped home menu for first-time operators; Pilot chat with scrollback, slash commands, and a live status
         strip—same build you get from <code>pip install</code>.

@@ -2,6 +2,11 @@
 
 All notable changes to **Local AI Agent Orchestrator** are recorded here. For install and usage, see [README.md](README.md).
 
+## v3.0.6 — README & site: installation up front
+
+- **README:** **Installation** is first in the table of contents and appears immediately after the TOC (before **Features**).
+- **Site:** Meta description and hero copy foreground install paths (`pip` + link to the curl installer); housekeeping version strings to **v3.0.6**.
+
 ## v3.0.5 — Install scripting & distribution docs
 
 - **Install:** `scripts/install.sh` (prefers **pipx**, else `pip install --user`) and optional env `LAO_VERSION` / `LAO_PACKAGE`.
