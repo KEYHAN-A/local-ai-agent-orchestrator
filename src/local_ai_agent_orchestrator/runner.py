@@ -33,7 +33,8 @@ from local_ai_agent_orchestrator.tools import use_plan_workspace
 
 log = logging.getLogger(__name__)
 
-from local_ai_agent_orchestrator.console_ui import apply_runner_context
+from local_ai_agent_orchestrator.unified_ui import apply_runner_context
+
 
 def _signal_handler(sig, frame):
     count = register_interrupt()
@@ -55,7 +56,7 @@ def run_factory(
     single_run: bool = False,
     *,
     use_tui: bool = False,
-    dashboard: object | None = None,
+    ui: object | None = None,
 ):
     s = get_settings()
     queue.recover_interrupted()
@@ -97,7 +98,7 @@ def run_factory(
             if single_run:
                 break
             if s.pilot_mode_enabled:
-                result = _enter_pilot_mode(mm, queue, use_tui=use_tui, dashboard=dashboard)
+                result = _enter_pilot_mode(mm, queue, use_tui=use_tui, ui=ui)
                 from local_ai_agent_orchestrator.pilot import PilotResult
                 if result == PilotResult.EXIT:
                     break
@@ -298,22 +299,39 @@ def _enter_pilot_mode(
     queue: TaskQueue,
     *,
     use_tui: bool = False,
-    dashboard: object | None = None,
+    ui: object | None = None,
 ) -> "PilotResult":
-    """Transition from autopilot to pilot mode. Returns PilotResult."""
+    """Transition from autopilot to pilot mode. Returns PilotResult.
+
+    When a UnifiedUI is active, the transition is seamless -- no screen clear,
+    no logging reconfiguration.  The unified UI just switches the status bar and
+    shows an inline pipeline summary before handing input to the pilot agent.
+    """
     from local_ai_agent_orchestrator.pilot import PilotResult
     from local_ai_agent_orchestrator.pilot_ui import enter_pilot_mode
 
-    if dashboard is not None:
-        dashboard.stop()
+    if ui is not None:
+        from local_ai_agent_orchestrator.unified_ui import UnifiedUI
+        if isinstance(ui, UnifiedUI):
+            ui.update_status(phase="Pilot", task="Interactive chat", idle_hint="")
+            ui.show_transition("Pipeline", "Pilot")
 
-    root = logging.getLogger()
-    root.handlers.clear()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
+            report_rows = ui.build_idle_report()
+            if report_rows:
+                ui.show_report("Pipeline summary", report_rows)
+            ui.snapshot_stats()
+            ui.bell()
+
+            result = _run_pilot_with_unified_ui(mm, queue, ui)
+
+            if result == PilotResult.RESUME_PIPELINE:
+                ui.show_transition("Pilot", "Pipeline")
+                resume_rows = ui.build_resume_report()
+                if resume_rows:
+                    ui.show_report("Resuming pipeline", resume_rows)
+                ui.update_status(phase="Resuming", task="Scanning for work")
+
+            return result
 
     apply_runner_context(phase="Pilot", task="Interactive chat", idle_hint="")
 
@@ -322,12 +340,44 @@ def _enter_pilot_mode(
     except KeyboardInterrupt:
         result = PilotResult.EXIT
 
-    if result == PilotResult.RESUME_PIPELINE and dashboard is not None:
-        root.handlers.clear()
-        dashboard.attach_logging()
-        dashboard.start()
-
     return result
+
+
+def _run_pilot_with_unified_ui(
+    mm: ModelManager,
+    queue: TaskQueue,
+    ui: "UnifiedUI",
+) -> "PilotResult":
+    """Create and run a PilotAgent wired to the UnifiedUI callbacks."""
+    from local_ai_agent_orchestrator.pilot import PilotAgent, PilotResult
+
+    queue.start_new_pilot_session()
+
+    def _on_user_input() -> str | None:
+        text = ui.prompt_user()
+        if text is None:
+            return None
+        stripped = text.strip()
+        if stripped and not stripped.startswith("/"):
+            ui.show_user_message(stripped)
+        return text
+
+    agent = PilotAgent(
+        mm,
+        queue,
+        on_assistant_message=ui.show_assistant_message,
+        on_tool_call=ui.show_tool_call,
+        on_tool_result=ui.show_tool_result,
+        on_llm_round_begin=lambda hint: ui.show_thinking(hint),
+        on_llm_round_end=lambda: None,
+        on_tool_round_begin=lambda name: None,
+        on_usage=ui.show_usage,
+    )
+
+    try:
+        return agent.run(get_input=_on_user_input)
+    except KeyboardInterrupt:
+        return PilotResult.EXIT
 
 
 def _print_idle_status(queue: TaskQueue):
@@ -464,13 +514,13 @@ def run_entry(
     setup_signals()
     s = get_settings()
 
-    dashboard = None
+    ui = None
     if use_tui:
-        from local_ai_agent_orchestrator import console_ui
+        from local_ai_agent_orchestrator.unified_ui import UnifiedUI
 
-        dashboard = console_ui.RunDashboard()
-        dashboard.attach_logging()
-        dashboard.start()
+        history_path = s.config_dir / ".lao" / "chat_history"
+        ui = UnifiedUI(history_path=history_path)
+        ui.start()
     else:
         logging.basicConfig(
             level=logging.INFO,
@@ -485,8 +535,8 @@ def run_entry(
         s.plans_dir.mkdir(parents=True, exist_ok=True)
 
         queue = TaskQueue()
-        if dashboard is not None:
-            dashboard.set_queue_getter(lambda: queue)
+        if ui is not None:
+            ui.set_queue_getter(lambda: queue)
 
         mm = ModelManager()
 
@@ -562,14 +612,14 @@ def run_entry(
             mm, queue,
             single_run=single_run or bool(plan),
             use_tui=use_tui,
-            dashboard=dashboard,
+            ui=ui,
         )
         return True
     finally:
-        if dashboard is not None and queue is not None:
-            dashboard.print_run_summary(queue)
-        if dashboard is not None:
-            dashboard.stop()
+        if ui is not None and queue is not None:
+            ui.print_run_summary(queue)
+        if ui is not None:
+            ui.stop()
         if use_tui:
             root = logging.getLogger()
             root.handlers.clear()

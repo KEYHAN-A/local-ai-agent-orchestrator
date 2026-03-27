@@ -15,7 +15,7 @@ import subprocess
 import time
 from enum import Enum, auto
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from openai import OpenAI
 
@@ -52,7 +52,12 @@ class PilotAgent:
         *,
         on_assistant_message: Optional[object] = None,
         on_tool_call: Optional[object] = None,
+        on_tool_result: Optional[Callable[[str, str], None]] = None,
         on_user_prompt: Optional[object] = None,
+        on_llm_round_begin: Optional[Callable[[str], None]] = None,
+        on_llm_round_end: Optional[Callable[[], None]] = None,
+        on_tool_round_begin: Optional[Callable[[str], None]] = None,
+        on_usage: Optional[Callable[[int, int], None]] = None,
     ):
         self._mm = mm
         self._queue = queue
@@ -60,7 +65,12 @@ class PilotAgent:
         self._session_start = time.time()
         self._on_assistant_message = on_assistant_message
         self._on_tool_call = on_tool_call
+        self._on_tool_result = on_tool_result
         self._on_user_prompt = on_user_prompt
+        self._on_llm_round_begin = on_llm_round_begin
+        self._on_llm_round_end = on_llm_round_end
+        self._on_tool_round_begin = on_tool_round_begin
+        self._on_usage = on_usage
 
         bind_queue(queue)
 
@@ -172,24 +182,51 @@ class PilotAgent:
             if should_shutdown():
                 return "(interrupted)"
 
+            hints = (
+                "weaving context from your workspace",
+                "consulting the local model",
+                "composing the next move",
+                "tracing plan and tooling paths",
+            )
+            hint = hints[round_num % len(hints)]
+
+            if self._on_llm_round_begin:
+                self._on_llm_round_begin(hint)
             try:
-                kwargs = {
-                    "model": model_key,
-                    "messages": messages,
-                    "max_tokens": cfg.max_completion,
-                    "temperature": 0.3,
-                    "timeout": s.llm_request_timeout_s,
-                    "tools": PILOT_TOOL_SCHEMAS,
-                    "tool_choice": "auto",
-                }
-                response = client.chat.completions.create(**kwargs)
-            except Exception as e:
-                error_msg = f"LLM error: {e}"
-                log.error(f"[Pilot] {error_msg}")
-                self._history.append({"role": "assistant", "content": error_msg})
-                if self._on_assistant_message:
-                    self._on_assistant_message(error_msg)
-                return error_msg
+                try:
+                    kwargs = {
+                        "model": model_key,
+                        "messages": messages,
+                        "max_tokens": cfg.max_completion,
+                        "temperature": 0.3,
+                        "timeout": s.llm_request_timeout_s,
+                        "tools": PILOT_TOOL_SCHEMAS,
+                        "tool_choice": "auto",
+                    }
+                    response = client.chat.completions.create(**kwargs)
+                except Exception as e:
+                    err_str = str(e)
+                    if "timeout" in err_str.lower() or "timed out" in err_str.lower():
+                        error_msg = (
+                            f"LLM request timed out ({err_str}). "
+                            "The model may be loading or the request was too large. "
+                            "Try again or simplify your request."
+                        )
+                    elif "connection" in err_str.lower() or "refused" in err_str.lower():
+                        error_msg = (
+                            f"Cannot reach LM Studio ({err_str}). "
+                            "Check that the server is running and try again."
+                        )
+                    else:
+                        error_msg = f"LLM error: {err_str}"
+                    log.error(f"[Pilot] {error_msg}")
+                    self._history.append({"role": "assistant", "content": error_msg})
+                    if self._on_assistant_message:
+                        self._on_assistant_message(error_msg)
+                    return error_msg
+            finally:
+                if self._on_llm_round_end:
+                    self._on_llm_round_end()
 
             choice = response.choices[0]
             msg = choice.message
@@ -218,6 +255,9 @@ class PilotAgent:
                     except json.JSONDecodeError:
                         fn_args = {}
 
+                    if self._on_tool_round_begin:
+                        self._on_tool_round_begin(fn_name)
+
                     if self._on_tool_call:
                         self._on_tool_call(fn_name, fn_args)
 
@@ -228,14 +268,21 @@ class PilotAgent:
                     else:
                         result = f"ERROR: Unknown tool '{fn_name}'"
 
+                    result_str = str(result)[:4000]
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": str(result)[:4000],
+                        "content": result_str,
                     })
 
+                    if self._on_tool_result:
+                        self._on_tool_result(fn_name, result_str)
+
                     if is_resume_requested():
-                        final = msg.content or "Resuming pipeline..."
+                        final = msg.content or (
+                            "Returning to autopilot. The pipeline will pick up "
+                            "pending tasks and new plans automatically."
+                        )
                         self._history.append({"role": "assistant", "content": final})
                         self._persist_message("assistant", final)
                         if self._on_assistant_message:
@@ -246,7 +293,11 @@ class PilotAgent:
                     messages = [messages[0]] + messages[-30:]
 
             else:
-                content = msg.content or "(no response)"
+                content = msg.content or (
+                    "The model returned an empty response. This can happen with "
+                    "complex queries -- try rephrasing or breaking the request "
+                    "into smaller steps."
+                )
                 self._history.append({"role": "assistant", "content": content})
                 self._persist_message("assistant", content)
                 if self._on_assistant_message:
@@ -263,6 +314,8 @@ class PilotAgent:
                         duration_seconds=0.0,
                         success=True,
                     )
+                    if self._on_usage:
+                        self._on_usage(usage.prompt_tokens, usage.completion_tokens)
                 return content
 
         final = "(tool loop ended after max rounds)"

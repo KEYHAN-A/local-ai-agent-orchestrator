@@ -5,22 +5,113 @@ Shared interactive Rich UI primitives for LAO CLI flows.
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Sequence
 
+import questionary
+from questionary import Choice
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from local_ai_agent_orchestrator import __version__
-from local_ai_agent_orchestrator.branding import DISPLAY as D
+from local_ai_agent_orchestrator.branding import ASCII_SPLASH, DISPLAY as D
 
 _console = Console(force_terminal=True)
 
 
 def is_tty() -> bool:
     return sys.stdout.isatty()
+
+
+def print_splash(*, tagline: str | None = None) -> None:
+    """Print LAO ASCII splash and optional tagline (TTY-only styling)."""
+    lines = ASCII_SPLASH.split("\n")
+    if not is_tty():
+        print("\n".join(lines))
+        if tagline:
+            print(tagline)
+        return
+    for line in lines:
+        _console.print(Text(line, style=D["AI_SPARK_BRIGHT"]))
+    if tagline:
+        _console.print()
+        _console.print(Text(tagline, style=D["TEXT_MUTED"]))
+    _console.print()
+
+
+def select_option(
+    title: str,
+    choices: Sequence[tuple[str, str]],
+    default_id: str,
+) -> str:
+    """
+    Select one option by stable id. TTY: arrow keys + Enter via questionary.
+    Non-TTY: numbered list and typed key (first char or full id where listed).
+    """
+    ids = [c[0] for c in choices]
+    if default_id not in ids:
+        default_id = ids[0]
+
+    use_questionary = is_tty() and sys.stdin.isatty() and os.getenv("LAO_NO_TUI") != "1"
+    if use_questionary:
+        q_choices = [Choice(title=label, value=cid) for cid, label in choices]
+        try:
+            result = questionary.select(
+                title,
+                choices=q_choices,
+                default=default_id,
+                qmark="",
+                style=questionary.Style(
+                    [
+                        ("highlighted", f"bold {D['AI_SPARK_BRIGHT']}"),
+                        ("pointer", D["AI_SPARK"]),
+                        ("selected", D["TEXT"]),
+                        ("answer", f"bold {D['TEXT']}"),
+                        ("question", D["TEXT_MUTED"]),
+                    ]
+                ),
+            ).ask()
+        except KeyboardInterrupt:
+            raise
+        if result is None:
+            return "exit"
+        return result
+
+    # Fallback: legacy table + typed selection by numeric key or id
+    key_to_id = {str(i + 1): cid for i, (cid, _) in enumerate(choices)}
+    key_to_id.update({cid: cid for cid, _ in choices})
+    if is_tty():
+        tbl = Table(title=title, border_style=D["PANEL_ELEVATED"])
+        tbl.add_column("Key", style=D["AI_SPARK_BRIGHT"], width=6)
+        tbl.add_column("Action", style=D["TEXT"])
+        for i, (cid, label) in enumerate(choices):
+            key = str(i + 1)
+            marker = " (default)" if cid == default_id else ""
+            tbl.add_row(key, f"{label}{marker}")
+        _console.print(tbl)
+    else:
+        print(title)
+        for i, (cid, label) in enumerate(choices):
+            key = str(i + 1)
+            marker = " (default)" if cid == default_id else ""
+            print(f"  {key}) {label}{marker}")
+
+    valid = set(key_to_id)
+    default_key = next(
+        (k for k, v in key_to_id.items() if v == default_id and k.isdigit()),
+        str(ids.index(default_id) + 1),
+    )
+    while True:
+        picked = ask_text("Select", default_key).strip()
+        if picked in key_to_id:
+            return key_to_id[picked]
+        # allow typing the id string directly
+        if picked in ids:
+            return picked
+        print_info(f"Choose 1–{len(choices)} or one of: {', '.join(ids)}")
 
 
 def print_header(title: str, subtitle: str | None = None) -> None:

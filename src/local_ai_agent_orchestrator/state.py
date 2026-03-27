@@ -202,6 +202,7 @@ class TaskQueue:
 
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or get_settings().db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path), isolation_level=None)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")

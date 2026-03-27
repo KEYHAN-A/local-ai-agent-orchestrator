@@ -128,6 +128,95 @@ class TestPilotAgentSlashCommands(unittest.TestCase):
         self.assertEqual(result, PilotResult.EXIT)
 
 
+class TestPilotLlmCallbacks(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
+        self.queue = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        self.mm = MagicMock()
+        self.mm.ensure_loaded.return_value = "test-model"
+
+    def tearDown(self):
+        reset_settings_for_tests()
+        self._td.cleanup()
+
+    def test_tool_loop_calls_llm_begin_end(self):
+        events: list = []
+        agent = PilotAgent(
+            self.mm,
+            self.queue,
+            on_assistant_message=lambda _m: None,
+            on_llm_round_begin=lambda h: events.append(("begin", h)),
+            on_llm_round_end=lambda: events.append(("end",)),
+        )
+        agent._history.append({"role": "user", "content": "hi"})
+
+        mock_msg = MagicMock()
+        mock_msg.content = "reply"
+        mock_msg.tool_calls = None
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        mock_resp = MagicMock()
+        mock_resp.choices = [mock_choice]
+        mock_resp.usage = None
+        client = MagicMock()
+        client.chat.completions.create.return_value = mock_resp
+
+        from local_ai_agent_orchestrator.settings import get_settings
+
+        cfg = get_settings().models["pilot"]
+        out = agent._tool_loop(client, "test-model", cfg)
+        self.assertEqual(out, "reply")
+        self.assertEqual([e[0] for e in events], ["begin", "end"])
+        self.assertIn("workspace", events[0][1])
+
+    def test_tool_loop_calls_tool_begin(self):
+        events: list = []
+        agent = PilotAgent(
+            self.mm,
+            self.queue,
+            on_assistant_message=lambda _m: None,
+            on_tool_round_begin=lambda n: events.append(("tool", n)),
+            on_llm_round_begin=lambda _h: None,
+            on_llm_round_end=lambda: None,
+        )
+        agent._history.append({"role": "user", "content": "hi"})
+
+        tc = MagicMock()
+        tc.id = "call_1"
+        tc.function.name = "pipeline_status"
+        tc.function.arguments = "{}"
+        mock_msg = MagicMock()
+        mock_msg.content = None
+        mock_msg.tool_calls = [tc]
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        resp1 = MagicMock()
+        resp1.choices = [mock_choice]
+        resp1.usage = None
+
+        mock_msg2 = MagicMock()
+        mock_msg2.content = "done"
+        mock_msg2.tool_calls = None
+        mock_choice2 = MagicMock()
+        mock_choice2.message = mock_msg2
+        resp2 = MagicMock()
+        resp2.choices = [mock_choice2]
+        resp2.usage = None
+
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [resp1, resp2]
+
+        from local_ai_agent_orchestrator.settings import get_settings
+
+        cfg = get_settings().models["pilot"]
+        agent._tool_loop(client, "test-model", cfg)
+        self.assertTrue(any(e == ("tool", "pipeline_status") for e in events))
+
+
 class TestPilotAgentContext(unittest.TestCase):
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()

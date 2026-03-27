@@ -25,3 +25,11 @@ DISPLAY: dict[str, str] = {
 
 UPSTREAM_REPO = "https://github.com/KEYHAN-A/local-ai-agent-orchestrator"
 AUTHOR = "KEYHAN"
+
+# Splash art for interactive CLI (UTF-8 box drawing; avoid ANSI in the string).
+ASCII_SPLASH = (
+    "  ╭──────────────────────────────────────────╮\n"
+    "  │   ▄▀▀  L O C A L   A I   O R C H .  ▀▄   │\n"
+    "  │              ·  LAO  ·                   │\n"
+    "  ╰──────────────────────────────────────────╯"
+)

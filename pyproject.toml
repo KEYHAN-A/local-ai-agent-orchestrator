@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-ai-agent-orchestrator"
-version = "3.0.0"
+version = "3.0.2"
 description = "Local AI Agent Orchestrator: planner, coder, reviewer, and interactive pilot agents over LM Studio with SQLite state, optional per-plan Git commits, and memory-safe model swapping"
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -24,6 +24,8 @@ classifiers = [
 ]
 dependencies = [
     "openai>=1.0",
+    "prompt_toolkit>=3.0",
+    "questionary>=2.0",
     "requests>=2.28",
     "rich>=13.0",
     "tiktoken>=0.5",

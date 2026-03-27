@@ -429,13 +429,14 @@ def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
     return 0
 
 
-def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
+def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
     show_root_warning = _is_home_root(cwd)
-    ui.print_header(
-        "Interactive Home",
-        "\nLAO is a local planner-coder-reviewer orchestration system for long-running coding workflows.\n"
-        "Website: https://lao.keyhan.info\n\n"
-        "Environment status and guided next actions...",
+    ui.print_splash(
+        tagline=(
+            "Pilot chat for planning, debugging, tool runs, and queue control; "
+            "then hand off to planner -> coder -> reviewer autopilot.  "
+            "https://lao.keyhan.info"
+        ),
     )
     if show_root_warning:
         ui.print_warning(
@@ -460,12 +461,21 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
     else:
         pass
 
+    models_ok = has_config and lm_ok and not missing
+    summary_bits = [
+        f"config {'ok' if has_config else 'missing'}",
+        f"LM Studio {'ok' if lm_ok else 'down' if has_config else '—'}",
+        f"models {'ok' if models_ok else (f'{len(missing)} missing' if missing else '—')}",
+        f"{plans_count} plan(s)",
+    ]
+    ui.print_info(" · ".join(summary_bits))
+    ui.print_info("Guide: /help for pilot commands, /resume to return to autopilot from chat.")
     ui.print_status_table(
         "Environment",
         [
             ("Config", f"{'OK' if has_config else 'MISSING'} ({cfg})"),
             ("LM Studio", "OK" if lm_ok else ("UNREACHABLE" if has_config else "skipped (no config)")),
-            ("Models", "OK" if (has_config and lm_ok and not missing) else (f"MISSING {len(missing)}" if missing else "skipped")),
+            ("Models", "OK" if models_ok else (f"MISSING {len(missing)}" if missing else "skipped")),
             ("Plans", f"{plans_count} file(s) in ./plans"),
         ],
     )
@@ -475,19 +485,33 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> int:
             ui.print_info(f"- {m}")
         ui.print_info("Tip: choose 'configure model names' to remap quickly.")
 
-    choice = ui.ask_choice(
-        "Choose Action",
-        [
-            ("1", "init workspace"),
-            ("2", "run orchestrator"),
-            ("3", "health check"),
-            ("4", "configure model names"),
-            ("5", "pilot mode (interactive chat)"),
-            ("6", "Exit"),
-        ],
-        "6" if show_root_warning else ("1" if not has_config else "2"),
+    if show_root_warning:
+        default_id = "exit"
+    elif not has_config:
+        default_id = "init"
+    elif not lm_ok:
+        default_id = "health"
+    elif missing:
+        default_id = "configure-models"
+    else:
+        default_id = "pilot"
+
+    menu_choices: list[tuple[str, str]] = [
+        (
+            "pilot",
+            "Pilot — chat with local LLM, run tools, inspect status, and resume pipeline",
+        ),
+        ("run", "Run orchestrator (watch plans, process queue, auto-enter pilot when idle)"),
+        ("init", "Initialize workspace (factory.yaml, plans/, .lao/)"),
+        ("health", "Health check (LM Studio server, model mappings, guardrails)"),
+        ("configure-models", "Configure role -> model name mappings"),
+        ("exit", "Exit"),
+    ]
+    return ui.select_option(
+        "Choose action  (↑↓ move · Enter select · Ctrl+C cancel)",
+        menu_choices,
+        default_id,
     )
-    return int(choice) if choice.isdigit() else 6
 
 
 def _post_action_prompt(cwd: Path, config_path: Path, default: str = "run") -> None:
@@ -694,16 +718,16 @@ def main(argv: list[str] | None = None) -> None:
 
         if args.command is None and sys.stdout.isatty():
             action = _home_menu(cwd, cfg_path)
-            if action == 1:
+            if action == "init":
                 _run_init(cwd, skip_readme=False, no_interactive=False)
                 return
-            if action == 3:
+            if action == "health":
                 args.command = "health"
-            elif action == 4:
+            elif action == "configure-models":
                 args.command = "configure-models"
-            elif action == 5:
+            elif action == "pilot":
                 args.command = "pilot"
-            elif action == 6:
+            elif action == "exit":
                 return
             else:
                 args.command = "run"
@@ -891,15 +915,36 @@ def main(argv: list[str] | None = None) -> None:
         if cmd == "pilot" or args.pilot_only:
             use_tui = sys.stdout.isatty() and not args.plain
             from local_ai_agent_orchestrator.model_manager import ModelManager
-            from local_ai_agent_orchestrator.pilot_ui import enter_pilot_mode
+            from local_ai_agent_orchestrator.pilot import PilotResult
+            from local_ai_agent_orchestrator.settings import get_settings as _gs
 
             mm = ModelManager()
             if not mm.health_check():
                 print("LM Studio server is not reachable.", file=sys.stderr)
                 raise SystemExit(1)
             q = TaskQueue()
-            result = enter_pilot_mode(mm, q, use_tui=use_tui)
-            from local_ai_agent_orchestrator.pilot import PilotResult
+            # Ensure fallback workspace exists so Pilot tools like list_dir('.') work
+            # even when running from an uninitialized directory.
+            _s = _gs()
+            (_s.config_dir / ".lao").mkdir(parents=True, exist_ok=True)
+            _s.workspace_root.mkdir(parents=True, exist_ok=True)
+            _s.plans_dir.mkdir(parents=True, exist_ok=True)
+
+            if use_tui:
+                from local_ai_agent_orchestrator.unified_ui import UnifiedUI
+                from local_ai_agent_orchestrator.runner import _run_pilot_with_unified_ui
+
+                unified = UnifiedUI(history_path=_s.config_dir / ".lao" / "chat_history")
+                unified.set_queue_getter(lambda: q)
+                unified.start()
+                try:
+                    result = _run_pilot_with_unified_ui(mm, q, unified)
+                finally:
+                    unified.stop()
+            else:
+                from local_ai_agent_orchestrator.pilot_ui import enter_pilot_mode
+                result = enter_pilot_mode(mm, q, use_tui=False)
+
             if result == PilotResult.RESUME_PIPELINE:
                 ok = runner.run_entry(plan=None, single_run=False, use_tui=use_tui)
                 if ok is False:
