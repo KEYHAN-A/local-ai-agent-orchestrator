@@ -530,6 +530,19 @@ class TerminalShell:
     """
     Owns the Rich Console and prompt_toolkit PromptSession.
     Consumes RenderEvents from the bus and writes them to the terminal.
+
+    Key design decision: Rich's Console is configured with ``no_color=True``
+    inside ``patch_stdout()``.  Rich ANSI escape sequences are mangled by
+    prompt_toolkit's StdoutProxy on many terminals (the ESC byte appears as
+    ``?``).  We avoid this entirely:
+
+    - **Banner**: printed BEFORE ``patch_stdout()`` via a direct Console that
+      writes to the real terminal — full colour works.
+    - **Body**: printed INSIDE ``patch_stdout()`` via a ``no_color=True``
+      Console — structural formatting (tables, rules, Unicode icons) renders
+      cleanly, with zero risk of ANSI leakage.
+    - **Toolbar / prompt**: styled by prompt_toolkit's native HTML — always
+      correct.
     """
 
     def __init__(
@@ -545,13 +558,14 @@ class TerminalShell:
         self._bus = bus
         self._history_path = history_path
 
+        # Body console: always no_color to prevent ANSI leakage through
+        # prompt_toolkit's patch_stdout proxy.
         self._console = Console(
-            force_terminal=caps.rich,
-            no_color=not caps.supports_color,
+            force_terminal=False,
+            no_color=True,
             highlight=False,
             markup=False,
             emoji=False,
-            width=caps.width if not caps.rich else None,
         )
 
         self._pt_session: Optional[PromptSession] = None
@@ -574,10 +588,37 @@ class TerminalShell:
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
+        # Print banner BEFORE patch_stdout — writes directly to the real
+        # terminal so Rich ANSI codes render correctly.
+        self._print_banner_direct()
+
+        # NOW start patch_stdout.  All subsequent Console output uses the
+        # no_color body console, so no ANSI codes pass through the proxy.
         self._patch_ctx = patch_stdout()
         self._patch_ctx.__enter__()
         self._bus.set_consumer(self._handle_event)
         self._bus.drain_pending(self._handle_event)
+
+    def _print_banner_direct(self) -> None:
+        """Render the banner with a direct Console (full colour on capable terminals)."""
+        if self._caps.rich:
+            direct = Console(
+                force_terminal=True,
+                highlight=False,
+                markup=False,
+                emoji=False,
+            )
+        else:
+            direct = Console(
+                force_terminal=False,
+                no_color=True,
+                highlight=False,
+                markup=False,
+                emoji=False,
+            )
+        banner_event = RenderEvent(EventKind.BANNER, {})
+        for renderable in self._composer.compose(banner_event):
+            direct.print(renderable)
 
     def stop(self) -> None:
         self._bus.set_consumer(None)
@@ -591,6 +632,9 @@ class TerminalShell:
     # ── event handling ───────────────────────────────────────────────────────
 
     def _handle_event(self, event: RenderEvent) -> None:
+        if event.kind == EventKind.BANNER:
+            return  # Already rendered by _print_banner_direct
+
         renderables = self._composer.compose(event)
         for r in renderables:
             self._console.print(r)
@@ -895,9 +939,8 @@ class UnifiedUI:
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        self._shell.start()
+        self._shell.start()  # prints banner directly, then starts patch_stdout
         self._attach_logging()
-        self._bus.put(RenderEvent(EventKind.BANNER, {}))
 
     def stop(self) -> None:
         global _active_ui
