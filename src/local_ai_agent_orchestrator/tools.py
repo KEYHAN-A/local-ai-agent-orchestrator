@@ -379,8 +379,25 @@ TOOL_DISPATCH = {
 # ── Internal Helpers ─────────────────────────────────────────────────
 
 
+_ALLOWED_PROJECT: ContextVar[Optional[Path]] = ContextVar("lao_allowed_project", default=None)
+
+
+@contextmanager
+def allow_project_access(project_path: Path) -> Iterator[None]:
+    """Temporarily allow tool access to *project_path* in addition to the workspace root."""
+    token = _ALLOWED_PROJECT.set(project_path.resolve())
+    try:
+        yield
+    finally:
+        _ALLOWED_PROJECT.reset(token)
+
+
 def _resolve_path(path: str) -> Optional[Path]:
-    """Resolve a path relative to workspace root, ensuring it stays within bounds."""
+    """Resolve a path relative to workspace root, ensuring it stays within bounds.
+
+    When an explicit project has been allowed via :func:`allow_project_access`,
+    paths inside that project are also accepted.
+    """
     root = _workspace_root().resolve()
     if path is None:
         return root
@@ -389,12 +406,19 @@ def _resolve_path(path: str) -> Optional[Path]:
         resolved = p.resolve()
     else:
         resolved = (root / p).resolve()
-    # Security: ensure path is within workspace
-    try:
-        resolved.relative_to(root)
-        return resolved
-    except ValueError:
-        return None
+
+    roots = [root]
+    allowed = _ALLOWED_PROJECT.get()
+    if allowed is not None:
+        roots.append(allowed)
+
+    for candidate_root in roots:
+        try:
+            resolved.relative_to(candidate_root)
+            return resolved
+        except ValueError:
+            continue
+    return None
 
 
 def _human_size(nbytes: int) -> str:

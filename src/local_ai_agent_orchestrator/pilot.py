@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import time
 from enum import Enum, auto
@@ -107,6 +108,15 @@ class PilotAgent:
             if slash_result is not None:
                 return slash_result
 
+            project_candidate = self._detect_project_intent(user_text)
+            if project_candidate:
+                switch_msg = self._resolve_and_switch_project(project_candidate)
+                if self._on_assistant_message:
+                    self._on_assistant_message(switch_msg)
+                if "Switched to project" in switch_msg:
+                    context = self._build_context()
+                    messages = build_pilot_messages(context, self._history)
+
             self._history.append({"role": "user", "content": user_text})
             self._persist_message("user", user_text)
 
@@ -118,8 +128,18 @@ class PilotAgent:
 
         return PilotResult.EXIT
 
+    _KNOWN_SLASH_COMMANDS = frozenset({
+        "/exit", "/quit", "/resume", "/continue", "/go",
+        "/clear", "/status", "/help", "/project",
+    })
+
     def _handle_slash_command(self, text: str) -> PilotResult | None:
-        """Handle /commands. Returns PilotResult if the command exits the loop, else None."""
+        """Handle /commands. Returns PilotResult if the command exits the loop, else None.
+
+        Only recognized commands are handled; input that starts with ``/`` but
+        is not a known command (e.g. an absolute path like ``/Users/...``) is
+        passed through to the LLM as a regular message.
+        """
         if not text.startswith("/"):
             return None
 
@@ -127,10 +147,13 @@ class PilotAgent:
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
 
-        if cmd == "/exit" or cmd == "/quit":
+        if cmd not in self._KNOWN_SLASH_COMMANDS:
+            return None  # Not a command — let the LLM handle it
+
+        if cmd in ("/exit", "/quit"):
             return PilotResult.EXIT
 
-        if cmd == "/resume" or cmd == "/continue" or cmd == "/go":
+        if cmd in ("/resume", "/continue", "/go"):
             return PilotResult.RESUME_PIPELINE
 
         if cmd == "/clear":
@@ -146,22 +169,109 @@ class PilotAgent:
                 self._on_assistant_message(status)
             return None
 
+        if cmd == "/project":
+            return self._handle_project_command(arg)
+
         if cmd == "/help":
             help_text = (
                 "Available commands:\n"
-                "  /status   — Show pipeline status\n"
-                "  /resume   — Return to autopilot pipeline\n"
-                "  /clear    — Clear chat history\n"
-                "  /help     — Show this help\n"
-                "  /exit     — Exit LAO\n"
+                "  /status          — Show pipeline status\n"
+                "  /resume          — Return to autopilot pipeline\n"
+                "  /clear           — Clear chat history\n"
+                "  /project         — List registered projects\n"
+                "  /project use X   — Switch to project X\n"
+                "  /project scan    — Scan for LAO projects\n"
+                "  /help            — Show this help\n"
+                "  /exit            — Exit LAO\n"
                 "\nOr just type naturally to chat with the pilot agent."
             )
             if self._on_assistant_message:
                 self._on_assistant_message(help_text)
             return None
 
+        return None
+
+    def _handle_project_command(self, arg: str) -> PilotResult | None:
+        """Handle /project sub-commands."""
+        from local_ai_agent_orchestrator.project_registry import ProjectRegistry
+
+        reg = ProjectRegistry()
+        sub = arg.strip().split(maxsplit=1)
+        sub_cmd = sub[0].lower() if sub else "list"
+        sub_arg = sub[1].strip() if len(sub) > 1 else ""
+
+        if sub_cmd in ("list", ""):
+            entries = reg.list_all()
+            if not entries:
+                msg = "No projects registered. Run /project scan to discover LAO projects."
+            else:
+                lines = ["Registered projects:"]
+                for e in entries:
+                    status_parts = []
+                    if e.pending_tasks:
+                        status_parts.append(f"{e.pending_tasks} pending")
+                    if e.failed_tasks:
+                        status_parts.append(f"{e.failed_tasks} failed")
+                    if e.plans_count:
+                        status_parts.append(f"{e.plans_count} plans")
+                    tag = f" ({', '.join(status_parts)})" if status_parts else ""
+                    lines.append(f"  {e.name}{tag}  {e.path}")
+                msg = "\n".join(lines)
+            if self._on_assistant_message:
+                self._on_assistant_message(msg)
+            return None
+
+        if sub_cmd == "scan":
+            root = Path(sub_arg).expanduser() if sub_arg else get_settings().config_dir
+            found = reg.scan(root)
+            if found:
+                lines = [f"Found {len(found)} project(s):"]
+                for e in found:
+                    lines.append(f"  {e.name}  {e.path}")
+                msg = "\n".join(lines)
+            else:
+                msg = f"No LAO projects found under {root}"
+            if self._on_assistant_message:
+                self._on_assistant_message(msg)
+            return None
+
+        if sub_cmd == "use":
+            if not sub_arg:
+                if self._on_assistant_message:
+                    self._on_assistant_message("Usage: /project use <name-or-path>")
+                return None
+            ctx = self._resolve_and_switch_project(sub_arg)
+            if self._on_assistant_message:
+                self._on_assistant_message(ctx)
+            return None
+
+        if sub_cmd == "status":
+            target = sub_arg or None
+            if target:
+                entry = reg.get(target)
+                if entry:
+                    entry = reg.refresh(entry)
+                    lines = [
+                        f"Project: {entry.name}",
+                        f"  Path: {entry.path}",
+                        f"  Config: {'yes' if entry.has_config else 'no'}",
+                        f"  Plans: {entry.plans_count}",
+                        f"  Pending: {entry.pending_tasks}  Failed: {entry.failed_tasks}",
+                    ]
+                    msg = "\n".join(lines)
+                else:
+                    msg = f"Project '{target}' not found. Run /project list."
+            else:
+                msg = f"Current workspace: {get_settings().config_dir}"
+            if self._on_assistant_message:
+                self._on_assistant_message(msg)
+            return None
+
         if self._on_assistant_message:
-            self._on_assistant_message(f"Unknown command: {cmd}. Type /help for options.")
+            self._on_assistant_message(
+                f"Unknown /project sub-command: {sub_cmd}. "
+                "Try: /project list, /project use <name>, /project scan, /project status"
+            )
         return None
 
     def _tool_loop(
@@ -177,6 +287,8 @@ class PilotAgent:
         s = get_settings()
         context = self._build_context()
         messages = build_pilot_messages(context, self._history)
+
+        consecutive_errors = 0
 
         for round_num in range(max_rounds):
             if should_shutdown():
@@ -269,6 +381,26 @@ class PilotAgent:
                         result = f"ERROR: Unknown tool '{fn_name}'"
 
                     result_str = str(result)[:4000]
+
+                    if result_str.startswith("ERROR"):
+                        consecutive_errors += 1
+                    else:
+                        consecutive_errors = 0
+
+                    if consecutive_errors >= 4:
+                        bail_msg = (
+                            "I've hit several errors in a row trying to access "
+                            "that resource. Could you provide the exact path or "
+                            "project name? You can also use /project scan to "
+                            "discover LAO projects, or /project use <name> to "
+                            "switch workspace."
+                        )
+                        self._history.append({"role": "assistant", "content": bail_msg})
+                        self._persist_message("assistant", bail_msg)
+                        if self._on_assistant_message:
+                            self._on_assistant_message(bail_msg)
+                        return bail_msg
+
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -293,11 +425,7 @@ class PilotAgent:
                     messages = [messages[0]] + messages[-30:]
 
             else:
-                content = msg.content or (
-                    "The model returned an empty response. This can happen with "
-                    "complex queries -- try rephrasing or breaking the request "
-                    "into smaller steps."
-                )
+                content = msg.content or self._build_fallback_response()
                 self._history.append({"role": "assistant", "content": content})
                 self._persist_message("assistant", content)
                 if self._on_assistant_message:
@@ -323,6 +451,97 @@ class PilotAgent:
         if self._on_assistant_message:
             self._on_assistant_message(final)
         return final
+
+    def _detect_project_intent(self, text: str) -> str | None:
+        """Return a candidate project path/name if the message references one."""
+        if re.match(r"^/[A-Za-z]", text) and "/" in text[1:]:
+            return text.split()[0]
+        patterns = [
+            r"(?:continue|resume|check|work on|status of|switch to|open)\s+(?:[\w\s]*?\s)?(?:the\s+)?(\S+)\s+(?:project|plan|app)",
+            r"(?:project|plan)\s+(?:in\s+)?([/\w.-]+)",
+        ]
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+        return None
+
+    def _resolve_and_switch_project(self, candidate: str) -> str:
+        """Try to resolve a candidate to a known project and switch workspace."""
+        from local_ai_agent_orchestrator.project_registry import ProjectRegistry
+
+        reg = ProjectRegistry()
+
+        p = Path(candidate).expanduser()
+        if p.is_dir():
+            if (p / "factory.yaml").exists() or (p / "factory.yml").exists():
+                entry = reg.add(p)
+                return self._switch_to_project(entry)
+            plans_dir = p / "plans"
+            if plans_dir.is_dir() and any(plans_dir.glob("*.md")):
+                entry = reg.add(p)
+                return self._switch_to_project(entry)
+
+        entry = reg.get(candidate)
+        if entry:
+            return self._switch_to_project(entry)
+
+        all_projects = reg.list_all()
+        matches = [e for e in all_projects if candidate.lower() in e.name.lower()]
+        if len(matches) == 1:
+            return self._switch_to_project(matches[0])
+        if matches:
+            listing = ", ".join(f"{e.name} ({e.path})" for e in matches)
+            return f"Multiple projects match '{candidate}': {listing}. Which one?"
+
+        return f"Project '{candidate}' not found. Try /project scan to discover projects."
+
+    def _switch_to_project(self, entry) -> str:
+        """Re-initialize settings for the given project entry."""
+        from local_ai_agent_orchestrator.settings import init_settings
+        from local_ai_agent_orchestrator import tools as _tools
+
+        project_path = Path(entry.path)
+        config_file = project_path / "factory.yaml"
+        if not config_file.exists():
+            config_file = project_path / "factory.yml"
+
+        try:
+            if config_file.exists():
+                init_settings(config_path=config_file, cwd=project_path)
+            else:
+                init_settings(cwd=project_path)
+
+            if hasattr(_tools, "_ACTIVE_WORKSPACE"):
+                _tools._ACTIVE_WORKSPACE = project_path
+
+            s = get_settings()
+            self._queue = TaskQueue(s.state_db)
+            bind_queue(self._queue)
+
+            context = self._build_context()
+            return f"Switched to project '{entry.name}' at {entry.path}\n\n{context}"
+        except Exception as exc:
+            return f"Failed to switch to project '{entry.name}': {exc}"
+
+    def _build_fallback_response(self) -> str:
+        """Structured fallback when the LLM returns an empty response."""
+        parts = ["I wasn't able to complete that request."]
+        s = get_settings()
+        config_yaml = s.config_dir / "factory.yaml"
+        config_yml = s.config_dir / "factory.yml"
+        if not config_yaml.exists() and not config_yml.exists():
+            parts.append(
+                f"No factory.yaml found in the current directory ({s.config_dir})."
+            )
+        stats = self._queue.get_stats()
+        if not stats or all(v == 0 for v in stats.values()):
+            parts.append("The task queue is empty.")
+        parts.append(
+            "Try: provide an exact path, use /project to switch workspace, "
+            "or rephrase your request."
+        )
+        return " ".join(parts)
 
     def _build_context(self) -> str:
         """Gather workspace and pipeline state for the system prompt."""

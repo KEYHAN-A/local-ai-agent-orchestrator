@@ -141,6 +141,41 @@ def codebase_search(query: str, top_k: int = 5) -> str:
         return f"ERROR: Search failed: {e}"
 
 
+def project_status(name_or_path: str = "") -> str:
+    """Return status of a registered project or list all known projects."""
+    from local_ai_agent_orchestrator.project_registry import ProjectRegistry
+
+    reg = ProjectRegistry()
+    if name_or_path:
+        entry = reg.get(name_or_path)
+        if not entry:
+            return f"ERROR: Project '{name_or_path}' not found in registry."
+        entry = reg.refresh(entry)
+        return (
+            f"Project: {entry.name}\n"
+            f"  Path: {entry.path}\n"
+            f"  Config: {'yes' if entry.has_config else 'no'}\n"
+            f"  Plans: {entry.plans_count}\n"
+            f"  Pending tasks: {entry.pending_tasks}\n"
+            f"  Failed tasks: {entry.failed_tasks}\n"
+            f"  Last used: {entry.last_used}"
+        )
+    entries = reg.list_all()
+    if not entries:
+        return "No projects registered. The user can run /project scan to discover LAO projects."
+    lines = [f"Registered projects ({len(entries)}):"]
+    for e in entries:
+        e = reg.refresh(e)
+        status = []
+        if e.pending_tasks:
+            status.append(f"{e.pending_tasks} pending")
+        if e.failed_tasks:
+            status.append(f"{e.failed_tasks} failed")
+        tag = f" ({', '.join(status)})" if status else ""
+        lines.append(f"  {e.name}{tag}  {e.path}")
+    return "\n".join(lines)
+
+
 # ── Combined schemas and dispatch ────────────────────────────────────
 
 PILOT_TOOL_SCHEMAS = list(TOOL_SCHEMAS) + [
@@ -219,6 +254,23 @@ PILOT_TOOL_SCHEMAS = list(TOOL_SCHEMAS) + [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "project_status",
+            "description": "Get status of a registered LAO project or list all known projects",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name_or_path": {
+                        "type": "string",
+                        "description": "Project name or path (omit to list all)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 PILOT_TOOL_DISPATCH = {
@@ -228,4 +280,5 @@ PILOT_TOOL_DISPATCH = {
     "retry_failed": retry_failed,
     "resume_pipeline": lambda **kw: resume_pipeline(),
     "codebase_search": codebase_search,
+    "project_status": project_status,
 }

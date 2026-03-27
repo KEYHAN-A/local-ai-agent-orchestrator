@@ -458,8 +458,12 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
         lm_ok = mm.health_check()
         if lm_ok:
             missing = mm.verify_models_exist()
-    else:
-        pass
+
+    # Discover registered projects for the project picker
+    from local_ai_agent_orchestrator.project_registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    known_projects = registry.list_all()
 
     models_ok = has_config and lm_ok and not missing
     summary_bits = [
@@ -468,6 +472,8 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
         f"models {'ok' if models_ok else (f'{len(missing)} missing' if missing else '—')}",
         f"{plans_count} plan(s)",
     ]
+    if known_projects:
+        summary_bits.append(f"{len(known_projects)} registered project(s)")
     ui.print_info(" · ".join(summary_bits))
     ui.print_info("Guide: /help for pilot commands, /resume to return to autopilot from chat.")
     ui.print_status_table(
@@ -485,10 +491,26 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
             ui.print_info(f"- {m}")
         ui.print_info("Tip: choose 'configure model names' to remap quickly.")
 
+    # Show known projects table when available
+    if known_projects:
+        project_rows = []
+        for p in known_projects:
+            p = registry.refresh(p)
+            status_parts = []
+            if p.pending_tasks:
+                status_parts.append(f"{p.pending_tasks} pending")
+            if p.failed_tasks:
+                status_parts.append(f"{p.failed_tasks} failed")
+            status_str = ", ".join(status_parts) if status_parts else "idle"
+            project_rows.append((p.name, f"{status_str}  {p.path}"))
+        ui.print_status_table("Known Projects", project_rows)
+
     if show_root_warning:
         default_id = "exit"
-    elif not has_config:
+    elif not has_config and not known_projects:
         default_id = "init"
+    elif not has_config and known_projects:
+        default_id = "projects"
     elif not lm_ok:
         default_id = "health"
     elif missing:
@@ -502,11 +524,18 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
             "Pilot — chat with local LLM, run tools, inspect status, and resume pipeline",
         ),
         ("run", "Run orchestrator (watch plans, process queue, auto-enter pilot when idle)"),
+    ]
+    if not has_config:
+        menu_choices.append(
+            ("scan", "Scan for LAO projects in subdirectories"),
+        )
+    menu_choices.extend([
+        ("projects", "Manage registered LAO projects"),
         ("init", "Initialize workspace (factory.yaml, plans/, .lao/)"),
         ("health", "Health check (LM Studio server, model mappings, guardrails)"),
         ("configure-models", "Configure role -> model name mappings"),
         ("exit", "Exit"),
-    ]
+    ])
     return ui.select_option(
         "Choose action  (↑↓ move · Enter select · Ctrl+C cancel)",
         menu_choices,
@@ -535,6 +564,109 @@ def _post_action_prompt(cwd: Path, config_path: Path, default: str = "run") -> N
         from local_ai_agent_orchestrator import runner
 
         runner.run_entry(plan=None, single_run=False, use_tui=ui.is_tty())
+
+
+def _run_projects_command(
+    action: str,
+    target: str | None,
+    root: Path,
+    tags: list[str],
+) -> None:
+    """Handle ``lao projects`` sub-actions."""
+    from local_ai_agent_orchestrator.project_registry import ProjectRegistry
+
+    reg = ProjectRegistry()
+
+    if action == "list":
+        entries = reg.list_all()
+        if not entries:
+            print("No projects registered. Run `lao projects scan` to discover LAO projects.")
+            return
+        print(f"Registered projects ({len(entries)}):\n")
+        for e in entries:
+            e = reg.refresh(e)
+            parts = []
+            if e.has_config:
+                parts.append("config")
+            if e.plans_count:
+                parts.append(f"{e.plans_count} plans")
+            if e.pending_tasks:
+                parts.append(f"{e.pending_tasks} pending")
+            if e.failed_tasks:
+                parts.append(f"{e.failed_tasks} failed")
+            status = ", ".join(parts) if parts else "empty"
+            print(f"  {e.name:30s}  [{status}]  {e.path}")
+        return
+
+    if action == "scan":
+        print(f"Scanning {root} for LAO projects...")
+        found = reg.scan(root)
+        if found:
+            print(f"\nFound {len(found)} project(s):")
+            for e in found:
+                print(f"  {e.name:30s}  {e.path}")
+        else:
+            print("No LAO projects found.")
+        return
+
+    if action == "add":
+        if not target:
+            print("Usage: lao projects add <path> [--tag TAG]")
+            return
+        entry = reg.add(Path(target), tags=tags or None)
+        print(f"Registered project: {entry.name} ({entry.path})")
+        return
+
+    if action == "remove":
+        if not target:
+            print("Usage: lao projects remove <name-or-path>")
+            return
+        if reg.remove(target):
+            print(f"Removed: {target}")
+        else:
+            print(f"Not found: {target}")
+        return
+
+    if action == "use":
+        if not target:
+            print("Usage: lao projects use <name-or-path>")
+            return
+        entry = reg.get(target)
+        if not entry:
+            p = Path(target).expanduser()
+            if p.is_dir():
+                entry = reg.add(p)
+            else:
+                print(f"Project not found: {target}")
+                return
+        project_path = Path(entry.path)
+        config_file = project_path / "factory.yaml"
+        if not config_file.exists():
+            config_file = project_path / "factory.yml"
+        if config_file.exists():
+            init_settings(config_path=config_file, cwd=project_path)
+        else:
+            init_settings(cwd=project_path)
+        print(f"Active project: {entry.name} ({entry.path})")
+        return
+
+    if action == "needs-action":
+        urgent = reg.needs_action()
+        if not urgent:
+            print("All projects are up to date.")
+            return
+        print(f"Projects needing action ({len(urgent)}):\n")
+        for e in urgent:
+            parts = []
+            if e.pending_tasks:
+                parts.append(f"{e.pending_tasks} pending")
+            if e.failed_tasks:
+                parts.append(f"{e.failed_tasks} failed")
+            status = ", ".join(parts) if parts else "stale"
+            print(f"  {e.name:30s}  [{status}]  {e.path}")
+        return
+
+    print(f"Unknown projects action: {action}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -681,6 +813,33 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to quality report JSON (default: <config_dir>/quality_report.json)",
     )
     sub.add_parser("pilot", help="Enter Pilot Mode (interactive chat agent)")
+    projects_p = sub.add_parser("projects", help="Manage registered LAO projects")
+    projects_p.add_argument(
+        "projects_action",
+        nargs="?",
+        default="list",
+        choices=["list", "scan", "add", "use", "remove", "needs-action"],
+        help="Projects sub-action (default: list)",
+    )
+    projects_p.add_argument(
+        "projects_target",
+        nargs="?",
+        default=None,
+        help="Path or name argument for add/use/remove",
+    )
+    projects_p.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Root directory for scan (default: cwd)",
+    )
+    projects_p.add_argument(
+        "--tag",
+        action="append",
+        dest="tags",
+        default=[],
+        help="Tag(s) for the project (with add)",
+    )
     sub.add_parser("health", help="Check LM Studio and models")
     sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
     sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
@@ -720,6 +879,12 @@ def main(argv: list[str] | None = None) -> None:
             action = _home_menu(cwd, cfg_path)
             if action == "init":
                 _run_init(cwd, skip_readme=False, no_interactive=False)
+                return
+            if action == "scan":
+                _run_projects_command("scan", None, cwd, [])
+                return
+            if action == "projects":
+                _run_projects_command("list", None, cwd, [])
                 return
             if action == "health":
                 args.command = "health"
@@ -904,6 +1069,15 @@ def main(argv: list[str] | None = None) -> None:
             migrated = load_and_migrate_quality_report(target, write_back=True)
             print(f"Migrated report schema in place: {target}")
             print(f"Report meta: {migrated.get('report_meta')}")
+            return
+
+        if cmd == "projects":
+            _run_projects_command(
+                args.projects_action,
+                args.projects_target,
+                args.root or cwd,
+                args.tags,
+            )
             return
 
         if cmd in ("retry-failed", "reset-failed"):

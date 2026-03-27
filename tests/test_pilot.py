@@ -92,16 +92,35 @@ class TestPilotAgentSlashCommands(unittest.TestCase):
         self.assertEqual(len(messages), 1)
         self.assertIn("Pipeline Status", messages[0])
 
-    def test_unknown_command(self):
+    def test_unknown_command_passes_through(self):
+        """Unknown /commands now pass through to the LLM instead of erroring."""
         agent, messages = self._make_agent()
         result = agent._handle_slash_command("/foobar")
         self.assertIsNone(result)
-        self.assertIn("Unknown command", messages[0])
+        self.assertEqual(len(messages), 0)
+
+    def test_absolute_path_passes_through(self):
+        """Absolute paths like /Users/keyhan/... should NOT be treated as slash commands."""
+        agent, messages = self._make_agent()
+        result = agent._handle_slash_command("/Users/keyhan/projects/benchmark")
+        self.assertIsNone(result)
+        self.assertEqual(len(messages), 0)
+
+    def test_unix_path_passes_through(self):
+        agent, _ = self._make_agent()
+        result = agent._handle_slash_command("/tmp/somefile.txt")
+        self.assertIsNone(result)
 
     def test_non_slash_returns_none(self):
         agent, _ = self._make_agent()
         result = agent._handle_slash_command("hello world")
         self.assertIsNone(result)
+
+    def test_project_command_recognized(self):
+        agent, messages = self._make_agent()
+        result = agent._handle_slash_command("/project list")
+        self.assertIsNone(result)
+        self.assertTrue(len(messages) >= 1)
 
     def test_run_exits_on_none_input(self):
         agent, _ = self._make_agent()
@@ -215,6 +234,196 @@ class TestPilotLlmCallbacks(unittest.TestCase):
         cfg = get_settings().models["pilot"]
         agent._tool_loop(client, "test-model", cfg)
         self.assertTrue(any(e == ("tool", "pipeline_status") for e in events))
+
+
+class TestPilotBudgetGuard(unittest.TestCase):
+    """Verify that 4 consecutive tool errors triggers bail-out."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
+        self.queue = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        self.mm = MagicMock()
+        self.mm.ensure_loaded.return_value = "test-model"
+
+    def tearDown(self):
+        reset_settings_for_tests()
+        self._td.cleanup()
+
+    def test_bails_after_four_errors(self):
+        messages_out: list = []
+        agent = PilotAgent(
+            self.mm,
+            self.queue,
+            on_assistant_message=lambda m: messages_out.append(m),
+            on_llm_round_begin=lambda _h: None,
+            on_llm_round_end=lambda: None,
+        )
+        agent._history.append({"role": "user", "content": "find something"})
+
+        # Build a response with 4 tool calls that all return ERROR
+        tool_calls = []
+        for i in range(4):
+            tc = MagicMock()
+            tc.id = f"call_{i}"
+            tc.function.name = "list_dir"
+            tc.function.arguments = '{"path": "/nonexistent"}'
+            tool_calls.append(tc)
+
+        mock_msg = MagicMock()
+        mock_msg.content = None
+        mock_msg.tool_calls = tool_calls
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        resp = MagicMock()
+        resp.choices = [mock_choice]
+        resp.usage = None
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = resp
+
+        from local_ai_agent_orchestrator.settings import get_settings
+        cfg = get_settings().models["pilot"]
+
+        result = agent._tool_loop(client, "test-model", cfg)
+        self.assertIn("several errors", result)
+        self.assertTrue(len(messages_out) >= 1)
+
+    def test_resets_on_success(self):
+        """A successful tool call resets the consecutive error counter."""
+        messages_out: list = []
+        agent = PilotAgent(
+            self.mm,
+            self.queue,
+            on_assistant_message=lambda m: messages_out.append(m),
+            on_llm_round_begin=lambda _h: None,
+            on_llm_round_end=lambda: None,
+        )
+        agent._history.append({"role": "user", "content": "status"})
+
+        # 3 errors then 1 success — should NOT bail
+        tc_err1 = MagicMock()
+        tc_err1.id = "call_e1"
+        tc_err1.function.name = "list_dir"
+        tc_err1.function.arguments = '{"path": "/nope"}'
+        tc_err2 = MagicMock()
+        tc_err2.id = "call_e2"
+        tc_err2.function.name = "list_dir"
+        tc_err2.function.arguments = '{"path": "/nope2"}'
+        tc_err3 = MagicMock()
+        tc_err3.id = "call_e3"
+        tc_err3.function.name = "list_dir"
+        tc_err3.function.arguments = '{"path": "/nope3"}'
+        tc_ok = MagicMock()
+        tc_ok.id = "call_ok"
+        tc_ok.function.name = "pipeline_status"
+        tc_ok.function.arguments = "{}"
+
+        mock_msg1 = MagicMock()
+        mock_msg1.content = None
+        mock_msg1.tool_calls = [tc_err1, tc_err2, tc_err3, tc_ok]
+        mock_choice1 = MagicMock()
+        mock_choice1.message = mock_msg1
+        resp1 = MagicMock()
+        resp1.choices = [mock_choice1]
+        resp1.usage = None
+
+        mock_msg2 = MagicMock()
+        mock_msg2.content = "done"
+        mock_msg2.tool_calls = None
+        mock_choice2 = MagicMock()
+        mock_choice2.message = mock_msg2
+        resp2 = MagicMock()
+        resp2.choices = [mock_choice2]
+        resp2.usage = None
+
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [resp1, resp2]
+
+        from local_ai_agent_orchestrator.settings import get_settings
+        cfg = get_settings().models["pilot"]
+
+        result = agent._tool_loop(client, "test-model", cfg)
+        self.assertEqual(result, "done")
+
+
+class TestPilotIntentDetection(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
+        self.queue = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        self.mm = MagicMock()
+
+    def tearDown(self):
+        reset_settings_for_tests()
+        self._td.cleanup()
+
+    def _agent(self):
+        return PilotAgent(self.mm, self.queue)
+
+    def test_detects_absolute_path(self):
+        agent = self._agent()
+        result = agent._detect_project_intent("/Users/keyhan/projects/benchmark")
+        self.assertEqual(result, "/Users/keyhan/projects/benchmark")
+
+    def test_detects_continue_pattern(self):
+        agent = self._agent()
+        result = agent._detect_project_intent("continue working on benchmark project")
+        self.assertEqual(result, "benchmark")
+
+    def test_detects_resume_pattern(self):
+        agent = self._agent()
+        result = agent._detect_project_intent("resume the myapp project")
+        self.assertEqual(result, "myapp")
+
+    def test_detects_check_pattern(self):
+        agent = self._agent()
+        result = agent._detect_project_intent("check benchmark project")
+        self.assertEqual(result, "benchmark")
+
+    def test_no_intent_for_regular_message(self):
+        agent = self._agent()
+        result = agent._detect_project_intent("what is the weather like?")
+        self.assertIsNone(result)
+
+    def test_no_intent_for_simple_slash(self):
+        """A single / without a path should not trigger intent detection."""
+        agent = self._agent()
+        result = agent._detect_project_intent("/")
+        self.assertIsNone(result)
+
+
+class TestPilotFallbackResponse(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
+        self.queue = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        self.mm = MagicMock()
+
+    def tearDown(self):
+        reset_settings_for_tests()
+        self._td.cleanup()
+
+    def test_fallback_mentions_no_config(self):
+        agent = PilotAgent(self.mm, self.queue)
+        msg = agent._build_fallback_response()
+        self.assertIn("No factory.yaml", msg)
+        self.assertIn("task queue is empty", msg.lower())
+
+    def test_fallback_with_config(self):
+        (self.td / "factory.yaml").write_text("test: true")
+        agent = PilotAgent(self.mm, self.queue)
+        msg = agent._build_fallback_response()
+        self.assertNotIn("No factory.yaml", msg)
 
 
 class TestPilotAgentContext(unittest.TestCase):

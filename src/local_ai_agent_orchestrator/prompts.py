@@ -177,16 +177,21 @@ def build_reviewer_messages(
 def build_pilot_messages(
     context_summary: str,
     conversation_history: list[dict],
+    *,
+    project_context: str | None = None,
 ) -> list[dict]:
     """
     Build messages for the pilot agent.
 
     context_summary: workspace state, pipeline status, recent activity
     conversation_history: prior user/assistant/tool messages from the session
+    project_context: optional extra context injected after a project switch
     """
     system_content = PILOT_SYSTEM
     if context_summary:
         system_content += f"\n\n## Current Context\n{context_summary}"
+    if project_context:
+        system_content += f"\n\n## Active Project\n{project_context}"
 
     messages: list[dict] = [{"role": "system", "content": system_content}]
     messages.extend(conversation_history)
