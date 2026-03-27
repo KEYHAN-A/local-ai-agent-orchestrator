@@ -318,10 +318,12 @@ class ViewComposer:
     def _banner(self) -> list[Any]:
         w = self._caps.width
         art = [
-            " _        ___    ___  ",
-            "| |      / _ |  / _ | ",
-            "| |__   / __ | / __ | ",
-            "|____| /_/ |_|/_/ |_| ",
+            " ██╗      █████╗  ██████╗ ",
+            " ██║     ██╔══██╗██╔═══██╗",
+            " ██║     ███████║██║   ██║",
+            " ██║     ██╔══██║██║   ██║",
+            " ███████╗██║  ██║╚██████╔╝",
+            " ╚══════╝╚═╝  ╚═╝ ╚═════╝",
         ]
         if self._caps.rich:
             items: list[Any] = [Text("")]
@@ -571,6 +573,8 @@ class TerminalShell:
         self._pt_session: Optional[PromptSession] = None
         self._patch_ctx: Optional[Any] = None
 
+        self._last_ctrl_c: float = 0.0
+
         # Status bar state (written from any thread, read by toolbar callback)
         self._lock = threading.Lock()
         self._phase = "Starting"
@@ -754,6 +758,13 @@ class TerminalShell:
         except EOFError:
             return None
         except KeyboardInterrupt:
+            now = time.monotonic()
+            if now - self._last_ctrl_c < 1.5:
+                return None  # double Ctrl+C → exit
+            self._last_ctrl_c = now
+            self._console.print(
+                "  Press Ctrl+C again to exit, or keep typing.",
+            )
             return ""
 
     # ── status bar helpers ───────────────────────────────────────────────────
