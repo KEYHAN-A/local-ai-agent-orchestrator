@@ -482,81 +482,6 @@
     </a>
   </nav>
 
-  <!-- ─── INSTALL (first in page flow) ─── -->
-  <section id="install" aria-labelledby="install-h" class="smaller">
-    <div class="reveal">
-      <p class="section-title" id="install-h">Quick start</p>
-      <div class="install-header">
-        <h2>Install and run in minutes</h2>
-        <div class="cta-row">
-          <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View
-            on GitHub</a>
-          <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install
-            from PyPI</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="install-grid reveal reveal-delay-1">
-
-      <div class="install-card">
-        <div class="install-card-head">
-          <span class="label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            One-liner
-          </span>
-          <button class="copy-btn" data-copy="curl -fsSL https://lao.keyhan.info/install.sh | bash" aria-label="Copy install command">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            Copy
-          </button>
-        </div>
-        <pre><code><span class="muted">$</span> curl -fsSL https://lao.keyhan.info/install.sh | bash</code></pre>
-      </div>
-
-      <div class="install-card">
-        <div class="install-card-head">
-          <span class="label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            pip
-          </span>
-          <button class="copy-btn" data-copy="pip install local-ai-agent-orchestrator" aria-label="Copy pip install command">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            Copy
-          </button>
-        </div>
-        <pre><code><span class="muted">$</span> pip install local-ai-agent-orchestrator</code></pre>
-      </div>
-
-      <div class="install-card install-card-full">
-        <div class="install-card-head">
-          <span class="label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            Run
-          </span>
-          <button class="copy-btn" data-copy="lao" aria-label="Copy run command">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            Copy
-          </button>
-        </div>
-        <pre><code><span class="muted">$</span> lao
-<span class="muted"># choose "Initialize workspace" or "Pilot", or run `lao projects scan`</span>
-<span class="muted">$</span> lao health
-<span class="muted">$</span> lao run
-<span class="muted">$</span> lao pilot</code></pre>
-      </div>
-
-    </div>
-
-    <p class="install-note reveal reveal-delay-2">
-      The one-liner uses <strong>pipx</strong> if installed, otherwise <code>pip install --user</code>.
-      <a href="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh" rel="noopener">Audit the script on GitHub</a>
-      before running. Existing project? Clone into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code>
-      so LAO works directly in that codebase folder.
-    </p>
-  </section>
-
-  <hr class="section-divider" />
-
   <!-- ─── HERO ─── -->
   <header class="hero" id="top">
     <div class="hero-mesh" aria-hidden="true"></div>
@@ -616,6 +541,81 @@
       </div>
     </div>
   </header>
+
+    <!-- ─── INSTALL (first in page flow) ─── -->
+    <section id="install" aria-labelledby="install-h" class="smaller">
+      <div class="reveal">
+        <p class="section-title" id="install-h">Quick start</p>
+        <div class="install-header">
+          <h2>Install and run in minutes</h2>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://github.com/KEYHAN-A/local-ai-agent-orchestrator" rel="noopener">View
+              on GitHub</a>
+            <a class="btn btn-ghost" href="https://pypi.org/project/local-ai-agent-orchestrator/" rel="noopener">Install
+              from PyPI</a>
+          </div>
+        </div>
+      </div>
+  
+      <div class="install-grid reveal reveal-delay-1">
+  
+        <div class="install-card">
+          <div class="install-card-head">
+            <span class="label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              One-liner
+            </span>
+            <button class="copy-btn" data-copy="curl -fsSL https://lao.keyhan.info/install.sh | bash" aria-label="Copy install command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <pre><code><span class="muted">$</span> curl -fsSL https://lao.keyhan.info/install.sh | bash</code></pre>
+        </div>
+  
+        <div class="install-card">
+          <div class="install-card-head">
+            <span class="label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              pip
+            </span>
+            <button class="copy-btn" data-copy="pip install local-ai-agent-orchestrator" aria-label="Copy pip install command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <pre><code><span class="muted">$</span> pip install local-ai-agent-orchestrator</code></pre>
+        </div>
+  
+        <div class="install-card install-card-full">
+          <div class="install-card-head">
+            <span class="label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              Run
+            </span>
+            <button class="copy-btn" data-copy="lao" aria-label="Copy run command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <pre><code><span class="muted">$</span> lao
+  <span class="muted"># choose "Initialize workspace" or "Pilot", or run `lao projects scan`</span>
+  <span class="muted">$</span> lao health
+  <span class="muted">$</span> lao run
+  <span class="muted">$</span> lao pilot</code></pre>
+        </div>
+  
+      </div>
+  
+      <p class="install-note reveal reveal-delay-2">
+        The one-liner uses <strong>pipx</strong> if installed, otherwise <code>pip install --user</code>.
+        <a href="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh" rel="noopener">Audit the script on GitHub</a>
+        before running. Existing project? Clone into <code>./MyRepo/</code> and use <code>plans/MyRepo.md</code>
+        so LAO works directly in that codebase folder.
+      </p>
+    </section>
+  
+    <hr class="section-divider" />
 
   <!-- ─── FEATURES ─── -->
   <section id="features" aria-labelledby="features-h">
