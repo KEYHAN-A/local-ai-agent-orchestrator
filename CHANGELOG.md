@@ -14,6 +14,7 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 - **Swift validation:** Comment/string stripping before `: Any` / `[String: Any]` heuristics; regex-based checks; Codable+`[String: Any]` scan uses stripped Swift text; optional **minor** `missing_ios_manifest` when Swift exists without root `Package.swift` / `.xcodeproj`.
 - **Architect:** Unknown task dependencies log **difflib** “similar title” hints instead of a single combined line.
 - **Config / docs:** `swift_ios` validation profile in defaults and `factory.example.yaml`; **CONFIGURATION.md** documents Swift contract, Xcode/SPM `validation_build_cmd` examples, and pilot/retry behavior.
+- **Repository:** Removed orphaned `example_plan` submodule gitlink (no `.gitmodules` entry).
 
 ## v3.0.7 — README hero screenshot & home menu asset
 
