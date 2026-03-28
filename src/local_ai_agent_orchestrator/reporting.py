@@ -33,6 +33,21 @@ def _write_lao_quality_markdown(workspace: Path, payload: dict) -> Path:
         f"- **Strict closure** — enabled: {contracts.get('strict_adherence_enabled', False)}, "
         f"satisfied: {contracts.get('closure_satisfied', False)}",
         "",
+    ]
+    eff = payload.get("efficiency") or {}
+    lines += [
+        "## Model loading (this LAO process)",
+        f"- **Run-log model_key changes** — {eff.get('model_switches', 0)} "
+        "(consecutive `run_log` rows where `model_key` differs)",
+    ]
+    if any(k in eff for k in ("swap_count", "load_count", "unload_count")):
+        lines += [
+            f"- **LM Studio swap cycles** — {eff.get('swap_count', 0)} "
+            "(unload of another LLM, then load; see `ModelManager`)",
+            f"- **LM Studio loads / unloads** — {eff.get('load_count', 0)} / {eff.get('unload_count', 0)}",
+        ]
+    lines += [
+        "",
         "## Inferred validation commands",
         f"- Manifest inference enabled: {vi.get('enabled', False)}",
         f"- Suggested build: `{vi.get('suggested_build') or '—'}`",

@@ -109,7 +109,7 @@ def run_factory(
                 _print_idle_status(queue)
                 interruptible_sleep(s.plan_watch_interval_s)
 
-    _print_final_status(queue)
+    _print_final_status(queue, mm)
 
 
 def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
@@ -394,14 +394,28 @@ def _print_idle_status(queue: TaskQueue):
         apply_runner_context(phase="Watching", idle_hint=msg, task="—")
 
 
-def _print_final_status(queue: TaskQueue):
+def _print_final_status(queue: TaskQueue, mm: ModelManager | None = None):
     stats = queue.get_stats()
     tokens = queue.get_total_tokens()
+    eff = queue.get_efficiency_metrics()
     log.info(f"\n{'='*60}")
     log.info("Factory Status:")
     for status, count in sorted(stats.items()):
         log.info(f"  {status:12s}: {count}")
     log.info(f"  Total tokens: {tokens['prompt_tokens'] + tokens['completion_tokens']:,}")
+    log.info(
+        f"  Run-log model_key changes: {eff.get('model_switches', 0)} "
+        f"(successive run_log rows with different model_key)"
+    )
+    if mm is not None:
+        m = mm.get_metrics()
+        log.info(
+            f"  LM Studio swap cycles: {m.get('swap_count', 0)} "
+            f"(unload+load after another LLM was resident)"
+        )
+        log.info(
+            f"  LM Studio loads / unloads: {m.get('load_count', 0)} / {m.get('unload_count', 0)}"
+        )
     log.info(f"{'='*60}")
     if should_shutdown():
         log.info("Goodbye from LAO.")
@@ -529,6 +543,7 @@ def run_entry(
         )
 
     queue: TaskQueue | None = None
+    mm: ModelManager | None = None
     try:
         (s.config_dir / ".lao").mkdir(parents=True, exist_ok=True)
         s.workspace_root.mkdir(parents=True, exist_ok=True)
@@ -617,7 +632,7 @@ def run_entry(
         return True
     finally:
         if ui is not None and queue is not None:
-            ui.print_run_summary(queue)
+            ui.print_run_summary(queue, model_metrics=mm.get_metrics() if mm else None)
         if ui is not None:
             ui.stop()
         if use_tui:

@@ -1119,15 +1119,33 @@ class UnifiedUI:
             pass
         return rows
 
-    def print_run_summary(self, queue: Any) -> None:
+    def print_run_summary(self, queue: Any, model_metrics: dict[str, int] | None = None) -> None:
         try:
             stats = queue.get_stats()
             tokens = queue.get_total_tokens()
             efficiency = queue.get_efficiency_metrics()
             rows = [(st, str(c)) for st, c in sorted(stats.items())]
             rows.append(("Tokens", f"{tokens['prompt_tokens'] + tokens['completion_tokens']:,}"))
-            rows.append(("Model switches", str(efficiency.get("model_switches", 0))))
+            rows.append(
+                (
+                    "Run-log model_key changes",
+                    str(efficiency.get("model_switches", 0)),
+                )
+            )
             rows.append(("Run events", str(efficiency.get("run_events", 0))))
+            if model_metrics:
+                rows.append(
+                    (
+                        "LM Studio swap cycles",
+                        str(model_metrics.get("swap_count", 0)),
+                    )
+                )
+                rows.append(
+                    ("LM Studio loads", str(model_metrics.get("load_count", 0)))
+                )
+                rows.append(
+                    ("LM Studio unloads", str(model_metrics.get("unload_count", 0)))
+                )
             self.show_report("LAO run finished", rows)
         except Exception:
             pass

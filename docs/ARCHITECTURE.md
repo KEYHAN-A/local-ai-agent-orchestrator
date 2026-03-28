@@ -54,6 +54,12 @@ Commits are skipped when there is nothing to stage (except reviewer, which alway
 
 Only one large LLM should reside in VRAM at a time. `ModelManager.ensure_loaded` unloads other LLMs, runs the **memory gate** (wait until freed pages exceed a fraction of the unloaded model size), then calls `POST /api/v1/models/load`. LM Studio **guardrails** may block loads; the UI may allow “Load anyway” where the API does not—see README troubleshooting.
 
+**When a swap actually happens:** `ensure_loaded` is a no-op if the role’s configured model `key` is already loaded. Mapping **the same LM Studio `key`** for `planner`, `coder`, and `reviewer` avoids cross-role unload/load cycles entirely (the embedder is small and may stay loaded alongside).
+
+**Batching:** With **`orchestration.phase_gated`** (default), the runner processes up to **`coder_batch_size`** coding tasks, then up to **`reviewer_batch_size`** reviews, before switching roles again—so distinct role keys incur fewer swaps per N tasks than **`phase_gated: false`**, which alternates coder → reviewer every task.
+
+**Observability:** `ModelManager` tracks **`swap_count`**, **`load_count`**, and **`unload_count`** for the current process. After a TTY run, the **LAO run finished** report contrasts **run-log model_key changes** (SQLite `run_log`: successive rows with different `model_key`) with **LM Studio swap cycles** (real unload-then-load). The same fields appear under **`efficiency`** in **`quality_report.json`** and **Model loading** in **`LAO_QUALITY.md`** when reports are written.
+
 ## Token discipline
 
 Phases use **short system prompts** and **no Crew-style ReAct history** by default. Coder tool transcripts are truncated when long.

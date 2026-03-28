@@ -4,6 +4,12 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 
 ## Unreleased
 
+## v3.0.10 — Model swap observability and throughput docs
+
+- **Observability:** TTY **LAO run finished** report and plain **`lao run`** factory status now separate **run-log model_key changes** (SQLite `run_log`) from **LM Studio swap cycles**, **loads**, and **unloads** (`ModelManager` metrics).
+- **Reporting:** **`LAO_QUALITY.md`** adds a **Model loading (this LAO process)** section when LM Studio metrics are included in **`quality_report.json`** → **`efficiency`**.
+- **Docs:** README **Throughput and LM Studio model swaps** (shared role keys, `phase_gated` / batch sizes); ARCHITECTURE **Model swapping** expanded with batching and observability pointers.
+
 ## v3.0.9 — Validation inference, LAO_QUALITY.md, Pilot /gates, reviewer rubrics
 
 - **Validation inference:** `orchestration.infer_validation_commands` (default **true**) suggests conservative **build** / **lint** commands from common manifests (`package.json`, `pyproject.toml` / `setup.py`, `go.mod`, `Cargo.toml`, `Package.swift`); merged into `run_optional_validation_commands` when profile slots for `build` / `lint` are free and explicit `validation_build_cmd` / `validation_lint_cmd` are unset (with command-string dedupe).
