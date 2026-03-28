@@ -4,6 +4,12 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 
 ## Unreleased
 
+## v3.0.12 — Fix analyst role missing from init wizard
+
+- **Fix:** `lao init` raised `KeyError: 'analyst'` when the user chose manual model keys — `analyst` was not included in `_default_model_profiles()` for any tier.
+- Added `analyst` to all three profiles (`small`, `medium`, `large`) with sensible defaults (`qwen2.5-7b-instruct` for small/medium, `qwen2.5-14b-instruct` for large).
+- Added `analyst` to the Step 1 role guide table in the init wizard.
+
 ## v3.0.11 — Analyst agent, P0 bug fixes, cross-platform memory gate, resilience
 
 ### Analyst agent (Phase 0)

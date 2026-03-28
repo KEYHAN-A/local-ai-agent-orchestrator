@@ -4,7 +4,7 @@
   <img alt="LAO interactive home menu with grouped actions" src="https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/docs/assets/lao-home-menu.png" width="780"/>
 </p>
 
-**LAO** (**v3.0.11+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
+**LAO** (**v3.0.12+**) is a local coding factory for [LM Studio](https://lmstudio.ai/) and other **OpenAI-compatible** servers: a **planner → coder → reviewer** pipeline for long-running work, plus **Pilot Mode**—an interactive, agentic chat on your terminal that can run workspace tools, inspect the queue, create plans, switch projects, and hand control back to autopilot when you type **`/resume`**. Everything is backed by **SQLite**, **memory-aware model swapping**, optional **per-plan Git**, and a unified **TTY experience** (Rich + prompt_toolkit).
 
 [![PyPI version](https://img.shields.io/pypi/v/local-ai-agent-orchestrator.svg?label=PyPI&logo=pypi)](https://pypi.org/project/local-ai-agent-orchestrator/)
 [![Python versions](https://img.shields.io/pypi/pyversions/local-ai-agent-orchestrator.svg)](https://pypi.org/project/local-ai-agent-orchestrator/)
@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrato
 
 Trust trade-off: piping to `bash` always means you trust the host and transport. Many people prefer the **raw.githubusercontent.com** URL because the path maps cleanly to `main/scripts/install.sh` in this repository. The **lao.keyhan.info** URL is the same behavior after one redirect through the small bootstrap.
 
-Optional environment variables: **`LAO_VERSION`** (pin a release, e.g. `3.0.11`), **`LAO_PACKAGE`** (override PyPI name).
+Optional environment variables: **`LAO_VERSION`** (pin a release, e.g. `3.0.12`), **`LAO_PACKAGE`** (override PyPI name).
 
 ### Homebrew ecosystem
 
@@ -198,7 +198,7 @@ flowchart LR
   pilot --> home2["Exit"]
 ```
 
-Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (latest: `v3.0.11`; Pilot highlights in `v3.0.4`).
+Full release notes: **[CHANGELOG.md](CHANGELOG.md)** (latest: `v3.0.12`; Pilot highlights in `v3.0.4`).
 
 ---
 
@@ -413,4 +413,4 @@ Issues and pull requests are welcome. See **[docs/CONTRIBUTING.md](docs/CONTRIBU
 - **Install the latest build:** `pip install -U local-ai-agent-orchestrator`
 - **GitHub Releases:** [github.com/KEYHAN-A/local-ai-agent-orchestrator/releases](https://github.com/KEYHAN-A/local-ai-agent-orchestrator/releases)
 
-**Recent highlights (v3.0.11):** **LM Studio** load/swap metrics in the TTY run summary and factory logs; **`LAO_QUALITY.md`** model-loading section; README and ARCHITECTURE guidance on **shared model keys** and **`phase_gated`** batching for fewer swaps—see **[CHANGELOG.md](CHANGELOG.md)**. **v3.0.9** added validation command inference, **`LAO_QUALITY.md`**, Pilot **`/gates`**, and reviewer rubrics. **LAO Pilot Mode** (v3.0.4+): interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, hardened terminal UX.
+**Recent highlights (v3.0.12):** **LM Studio** load/swap metrics in the TTY run summary and factory logs; **`LAO_QUALITY.md`** model-loading section; README and ARCHITECTURE guidance on **shared model keys** and **`phase_gated`** batching for fewer swaps—see **[CHANGELOG.md](CHANGELOG.md)**. **v3.0.9** added validation command inference, **`LAO_QUALITY.md`**, Pilot **`/gates`**, and reviewer rubrics. **LAO Pilot Mode** (v3.0.4+): interactive agentic chat, project registry (`lao projects`, `/project`), grouped home menu, hardened terminal UX.
