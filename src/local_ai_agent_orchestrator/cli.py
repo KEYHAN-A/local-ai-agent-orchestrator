@@ -150,6 +150,7 @@ def _default_model_profiles() -> dict[str, dict[str, str]]:
             "reviewer": "qwen2.5-7b-instruct",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
             "pilot": "qwen2.5-7b-instruct",
+            "analyst": "qwen2.5-7b-instruct",
         },
         "medium": {
             "planner": "qwen_qwen3.5-35b-a3b",
@@ -157,6 +158,7 @@ def _default_model_profiles() -> dict[str, dict[str, str]]:
             "reviewer": "deepseek-r1-distill-qwen-32b",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
             "pilot": "qwen_qwen3.5-35b-a3b",
+            "analyst": "qwen2.5-7b-instruct",
         },
         "large": {
             "planner": "qwen_qwen3.5-35b-a3b",
@@ -164,6 +166,7 @@ def _default_model_profiles() -> dict[str, dict[str, str]]:
             "reviewer": "deepseek/deepseek-r1",
             "embedder": "text-embedding-nomic-embed-text-v1.5",
             "pilot": "qwen_qwen3.5-35b-a3b",
+            "analyst": "qwen2.5-14b-instruct",
         },
     }
 
@@ -340,6 +343,7 @@ def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
             ("reviewer", "Approve/reject with quality checks"),
             ("embedder", "Power semantic file retrieval"),
             ("pilot", "Interactive chat agent when pipeline is idle"),
+            ("analyst", "Read-only project survey before architect (large context)"),
         ],
     )
 
