@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
 """
 Workspace tools for the coding agents.
 
@@ -33,6 +35,11 @@ def _workspace_root() -> Path:
     return get_settings().workspace_root.resolve()
 
 
+def tools_workspace_root() -> Path:
+    """Root directory for file_read, list_dir, shell_exec (pilot or active plan context)."""
+    return _workspace_root().resolve()
+
+
 @contextmanager
 def use_plan_workspace(queue: "TaskQueue", plan_id: str) -> Iterator[Path]:
     """Set the active workspace to this plan's `<config_dir>/<stem>/` for the block."""
@@ -42,6 +49,31 @@ def use_plan_workspace(queue: "TaskQueue", plan_id: str) -> Iterator[Path]:
         yield path
     finally:
         _ACTIVE_WORKSPACE.reset(token)
+
+
+def push_active_workspace(path: Path) -> object:
+    """Push a workspace root for file/shell tools; returns a token for reset_active_workspace."""
+    return _ACTIVE_WORKSPACE.set(path.resolve())
+
+
+def reset_active_workspace(token: object) -> None:
+    """Restore the previous workspace after push_active_workspace."""
+    _ACTIVE_WORKSPACE.reset(token)
+
+
+def pick_pilot_tools_workspace(queue: "TaskQueue") -> Path:
+    """
+    Directory Pilot Mode tools should use: newest plan folder that still has
+    actionable work, otherwise the LAO config directory (plans/, per-plan stems).
+    """
+    s = get_settings()
+    plans = queue.get_plans()
+    actionable = {"failed", "pending", "rework", "coded", "review", "coding"}
+    for p in reversed(plans):
+        for t in queue.get_plan_tasks(p["id"]):
+            if t.status in actionable:
+                return queue.workspace_for_plan(p["id"])
+    return s.config_dir.resolve()
 
 
 def file_read(path: str, max_lines: int = 500) -> str:

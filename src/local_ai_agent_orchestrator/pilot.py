@@ -32,7 +32,13 @@ from local_ai_agent_orchestrator.pilot_tools import (
 from local_ai_agent_orchestrator.prompts import build_pilot_messages
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import TaskQueue
-from local_ai_agent_orchestrator.tools import list_dir
+from local_ai_agent_orchestrator.tools import (
+    list_dir,
+    pick_pilot_tools_workspace,
+    push_active_workspace,
+    reset_active_workspace,
+    tools_workspace_root,
+)
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +78,7 @@ class PilotAgent:
         self._on_llm_round_end = on_llm_round_end
         self._on_tool_round_begin = on_tool_round_begin
         self._on_usage = on_usage
+        self._pilot_ws_token: object | None = None
 
         bind_queue(queue)
 
@@ -91,6 +98,18 @@ class PilotAgent:
 
         log.info("[Pilot] Entering Pilot Mode")
 
+        pilot_root = pick_pilot_tools_workspace(self._queue)
+        self._pilot_ws_token = push_active_workspace(pilot_root)
+        log.info("[Pilot] Tools workspace: %s", pilot_root)
+
+        try:
+            return self._run_loop(get_input, client, model_key, cfg)
+        finally:
+            if self._pilot_ws_token is not None:
+                reset_active_workspace(self._pilot_ws_token)
+                self._pilot_ws_token = None
+
+    def _run_loop(self, get_input: object, client, model_key: str, cfg) -> PilotResult:
         while not should_shutdown():
             if is_resume_requested():
                 log.info("[Pilot] Resuming pipeline (tool-triggered)")
@@ -499,7 +518,6 @@ class PilotAgent:
     def _switch_to_project(self, entry) -> str:
         """Re-initialize settings for the given project entry."""
         from local_ai_agent_orchestrator.settings import init_settings
-        from local_ai_agent_orchestrator import tools as _tools
 
         project_path = Path(entry.path)
         config_file = project_path / "factory.yaml"
@@ -512,8 +530,10 @@ class PilotAgent:
             else:
                 init_settings(cwd=project_path)
 
-            if hasattr(_tools, "_ACTIVE_WORKSPACE"):
-                _tools._ACTIVE_WORKSPACE = project_path
+            new_root = project_path.resolve()
+            if self._pilot_ws_token is not None:
+                reset_active_workspace(self._pilot_ws_token)
+            self._pilot_ws_token = push_active_workspace(new_root)
 
             s = get_settings()
             self._queue = TaskQueue(s.state_db)
@@ -550,6 +570,7 @@ class PilotAgent:
         s = get_settings()
         parts.append(f"Workspace: {s.config_dir}")
         parts.append(f"Plans directory: {s.plans_dir}")
+        parts.append(f"Pilot tool root (list_dir, file_read, shell_exec): {tools_workspace_root()}")
 
         stats = self._queue.get_stats()
         if stats:

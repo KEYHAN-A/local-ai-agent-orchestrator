@@ -45,6 +45,22 @@ class TestValidators(unittest.TestCase):
             self.assertTrue(all(bool(f.analyzer_kind) for f in findings))
             self.assertTrue(any(float(f.confidence) >= 0.6 for f in findings))
 
+    def test_swift_schema_lint_ignores_any_in_comment(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            p = root / "A.swift"
+            p.write_text("// Document : Any in protocols\nlet x = 1\n", encoding="utf-8")
+            findings = validate_files(root, ["A.swift"])
+            self.assertFalse(any(f.issue_class == "untyped_any" for f in findings))
+
+    def test_ios_manifest_advisory_without_package_or_xcode(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "LAO_PLAN.md").write_text("# Swift iOS app with SwiftUI.\n", encoding="utf-8")
+            (root / "App.swift").write_text("import SwiftUI\n", encoding="utf-8")
+            findings = validate_files(root, ["App.swift"])
+            self.assertTrue(any(f.issue_class == "missing_ios_manifest" for f in findings))
+
     def test_validate_reviewer_json(self):
         approved, findings, summary = validate_reviewer_json(
             '{"verdict":"REJECTED","findings":[{"severity":"major","file_path":"x.py","issue_class":"bug","message":"oops","fix_hint":"fix"}],"summary":"Needs changes"}'

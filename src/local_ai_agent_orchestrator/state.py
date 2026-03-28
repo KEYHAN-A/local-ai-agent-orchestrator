@@ -9,6 +9,7 @@ import sqlite3
 import hashlib
 import json
 import logging
+import difflib
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -405,6 +406,31 @@ class TaskQueue:
             )
         return out
 
+    def resolve_plan_ref(self, ref: str) -> Optional[str]:
+        """
+        Map a user-supplied plan reference to the internal plan id.
+        Accepts: internal id, exact filename (e.g. MyPlan.md), stem, or stem.md.
+        """
+        ref = (ref or "").strip()
+        if not ref:
+            return None
+        row = self._conn.execute("SELECT id FROM plans WHERE id = ?", (ref,)).fetchone()
+        if row:
+            return str(row["id"])
+        candidates = [ref]
+        if not ref.lower().endswith(".md"):
+            candidates.append(f"{ref}.md")
+        for c in candidates:
+            row = self._conn.execute("SELECT id FROM plans WHERE filename = ?", (c,)).fetchone()
+            if row:
+                return str(row["id"])
+        stem = Path(ref).stem
+        rows = self._conn.execute("SELECT id, filename FROM plans").fetchall()
+        for r in rows:
+            if Path(r["filename"]).stem.lower() == stem.lower():
+                return str(r["id"])
+        return None
+
     def workspace_for_plan(self, plan_id: str) -> Path:
         """
         Per-plan workspace: <config_dir>/<plan_stem>/
@@ -435,11 +461,23 @@ class TaskQueue:
                 cleaned_deps = [d for d in deps if d in title_set]
                 if len(cleaned_deps) != len(deps):
                     dropped = set(deps) - set(cleaned_deps)
-                    log.warning(
-                        "[State] Task %r had unknown dependencies dropped: %s",
-                        t.get("title", "Untitled"),
-                        ", ".join(sorted(dropped)),
-                    )
+                    for d in sorted(dropped):
+                        close = difflib.get_close_matches(d, list(title_set), n=3, cutoff=0.45)
+                        if close:
+                            log.warning(
+                                "[State] Task %r had unknown dependency %r dropped; "
+                                "similar task titles in this batch: %s",
+                                t.get("title", "Untitled"),
+                                d,
+                                ", ".join(close),
+                            )
+                        else:
+                            log.warning(
+                                "[State] Task %r had unknown dependency %r dropped "
+                                "(no similar title in this batch)",
+                                t.get("title", "Untitled"),
+                                d,
+                            )
                 self._conn.execute(
                     """INSERT INTO micro_tasks
                        (plan_id, title, description, file_paths, dependencies, priority, phase_name, deliverable_ids)

@@ -1,5 +1,9 @@
 # Configuration
 
+## LM Studio prerequisite
+
+LAO’s default path assumes **[LM Studio](https://lmstudio.ai/)** is installed, the **local server** is running (same host/port as **`lm_studio_base_url`** in `factory.yaml`, often `http://127.0.0.1:1234`), and model **keys** match the server. **Memory-aware switching** (`ModelManager`) calls LM Studio’s REST **load** and **unload** endpoints so only one large LLM tends to sit in VRAM at a time; other OpenAI-compatible servers may work for chat but not for that automation. See the README **Prerequisites (LM Studio)** section for the first-run checklist.
+
 ## factory.yaml
 
 Resolved paths under `paths` are **relative to the YAML file’s directory**.
@@ -13,7 +17,7 @@ Top-level keys:
 | `total_ram_gb` | Optional; logged at startup; reserved for future heuristics |
 | `paths.plans` | Incoming `.md` plans |
 | `paths.database` | SQLite path (recommended: `./.lao/state.db`) |
-| `paths.workspace` | Optional fallback when no per-plan context is active (default: `.lao/_misc`) |
+| `paths.workspace` | Optional fallback when no per-plan context is active (default: `.lao/_misc`). Coder tasks use each plan’s folder under `config_dir`; **Pilot Mode** binds `list_dir` / `file_read` / `shell_exec` to the config directory or the newest plan folder that still has pending/failed work. |
 | `memory_gate.*` | `release_fraction`, `swap_growth_limit_mb`, `settle_timeout_s`, `poll_interval_s` |
 | `orchestration.*` | Timeouts, retries, `max_task_attempts`, `plan_watch_interval_s`, **`pilot_mode_enabled`** (default true: TTY run hands off to Pilot when idle), **`pilot_context_lines`**, etc. |
 | `git.enabled` | When **true** (default), run Git commits in each **per-plan project folder** (`./<plan-stem>/`). Requires **`git`** on `PATH` and committer identity. Override with CLI **`--no-git`**. |
@@ -72,6 +76,31 @@ Roles: `planner`, `coder`, `reviewer`, `embedder`, **`pilot`** (**Pilot Mode** c
 - HTTP: `GET http://127.0.0.1:1234/v1/models`
 
 `size_bytes` should match on-disk size from `lms ls` (used for memory-gate bookkeeping).
+
+### Swift / iOS validation contract
+
+- Static checks flag **untyped** `: Any` and `[String: Any]` in `.swift` (comments and string literals are stripped first). Plans should tell the coder to use concrete `Codable` types, tagged enums, or `Data` + `JSONDecoder` instead.
+- Set **`orchestration.validation_profile: swift_ios`** when working on Apple platforms; the profile matches **`default`** today and exists as a documented convention—pair it with real build/lint commands.
+- After **`Package.swift`** or an **`.xcodeproj`** exists in the per-plan workspace, set **`validation_build_cmd`** and optionally **`validation_lint_cmd`** so the reviewer’s gate runs your toolchain (see commented examples in **`factory.example.yaml`**).
+
+Example **`validation_build_cmd`** (adjust scheme and simulator):
+
+```bash
+xcodebuild -scheme YourApp -destination 'platform=iOS Simulator,name=iPhone 16' build
+```
+
+Example Swift Package build from the plan folder:
+
+```bash
+swift build
+```
+
+When Swift sources exist but no manifest is at the workspace root, LAO emits a **minor** advisory (`missing_ios_manifest`) so you know the tree may not compile yet.
+
+### Pilot tools and `retry_failed`
+
+- **`pipeline_status`** lists each plan’s internal **`id=`**, **`file=`**, and **`workspace=`** path. **`retry_failed`** accepts that **id**, the **filename** (e.g. `MyPlan.md`), or the stem (`MyPlan`).
+- Creating plans via Pilot: titles may end with **`.md`**; it is stripped so filenames stay readable.
 
 ## Environment variables
 

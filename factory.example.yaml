@@ -21,11 +21,20 @@ orchestration:
   reviewer_batch_size: 6
   max_context_utilization: 0.85
   quality_gate_mode: standard
+  # After you have Package.swift or an .xcodeproj in the per-plan folder, set a real build:
+  # validation_build_cmd: xcodebuild -scheme Aether -destination 'platform=iOS Simulator,name=iPhone 16' build
+  # validation_lint_cmd: swiftlint lint --strict
   validation_build_cmd: null
   validation_lint_cmd: null
   validation_profile: default
   validation_profiles:
     default:
+      commands: []
+      block_on_severities: [critical, major]
+      block_min_confidence: 0.6
+      block_min_confidence_by_analyzer_kind: {}
+      block_min_confidence_by_analyzer_id: {}
+    swift_ios:
       commands: []
       block_on_severities: [critical, major]
       block_min_confidence: 0.6

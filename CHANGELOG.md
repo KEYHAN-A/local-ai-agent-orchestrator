@@ -2,6 +2,19 @@
 
 All notable changes to **Local AI Agent Orchestrator** are recorded here. For install and usage, see [README.md](README.md).
 
+## Unreleased
+
+- **Docs:** README **Prerequisites (LM Studio)** (install app, local server, keys); **Requirements** clarifies desktop app + load/unload API vs generic OpenAI-compatible chat; **site** install note and **CONFIGURATION** intro tie memory-aware switching to LM Studio’s REST API.
+
+## v3.0.8 — Pilot workspace, Swift validation, plan ergonomics
+
+- **Pilot Mode:** Tools (`list_dir`, `file_read`, `shell_exec`, search) bind to `config_dir` or the newest plan folder with actionable tasks; fixed `ContextVar` misuse when switching projects via `/project`.
+- **`create_plan`:** Strip trailing `.md` from titles so filenames stay readable (e.g. `FIX_AUTH_MANAGER.md` → `FIX_AUTH_MANAGER.md` on disk, not `FIX_AUTH_MANAGERmd.md`).
+- **`pipeline_status` / `retry_failed`:** Plans show `id=`, `file=`, and `workspace=`; `retry_failed` accepts plan filename or stem via `resolve_plan_ref`.
+- **Swift validation:** Comment/string stripping before `: Any` / `[String: Any]` heuristics; regex-based checks; Codable+`[String: Any]` scan uses stripped Swift text; optional **minor** `missing_ios_manifest` when Swift exists without root `Package.swift` / `.xcodeproj`.
+- **Architect:** Unknown task dependencies log **difflib** “similar title” hints instead of a single combined line.
+- **Config / docs:** `swift_ios` validation profile in defaults and `factory.example.yaml`; **CONFIGURATION.md** documents Swift contract, Xcode/SPM `validation_build_cmd` examples, and pilot/retry behavior.
+
 ## v3.0.7 — README hero screenshot & home menu asset
 
 - **README:** Home menu image moved to the top (under the title); duplicate screenshot removed from the Pilot section; refreshed **`docs/assets/lao-home-menu.png`** for PyPI and GitHub rendering.

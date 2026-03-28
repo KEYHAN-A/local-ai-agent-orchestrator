@@ -90,6 +90,22 @@ class TestTaskQueueStateHelpers(unittest.TestCase):
             self.assertFalse(q.is_plan_terminal(pid))
             q.close()
 
+    def test_resolve_plan_ref_by_filename_and_stem(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            q = TaskQueue()
+            pid = q.register_plan("MyFeature.md", "# x")
+            self.assertEqual(q.resolve_plan_ref(pid), pid)
+            self.assertEqual(q.resolve_plan_ref("MyFeature.md"), pid)
+            self.assertEqual(q.resolve_plan_ref("MyFeature"), pid)
+            self.assertIsNone(q.resolve_plan_ref("nope"))
+            q.close()
+
     def test_strict_plan_closure_requires_validated_deliverables(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

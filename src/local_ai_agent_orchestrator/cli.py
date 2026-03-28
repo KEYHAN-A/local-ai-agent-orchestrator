@@ -64,7 +64,14 @@ def _write_example_config(dest: Path) -> None:
                     "block_min_confidence": 0.6,
                     "block_min_confidence_by_analyzer_kind": {},
                     "block_min_confidence_by_analyzer_id": {},
-                }
+                },
+                "swift_ios": {
+                    "commands": [],
+                    "block_on_severities": ["critical", "major"],
+                    "block_min_confidence": 0.6,
+                    "block_min_confidence_by_analyzer_kind": {},
+                    "block_min_confidence_by_analyzer_id": {},
+                },
             },
             "placeholder_max_markers_per_kloc": 3.0,
             "placeholder_max_ratio": 0.02,
@@ -201,7 +208,14 @@ def _build_config_from_inputs(
                     "block_min_confidence": 0.6,
                     "block_min_confidence_by_analyzer_kind": {},
                     "block_min_confidence_by_analyzer_id": {},
-                }
+                },
+                "swift_ios": {
+                    "commands": [],
+                    "block_on_severities": ["critical", "major"],
+                    "block_min_confidence": 0.6,
+                    "block_min_confidence_by_analyzer_kind": {},
+                    "block_min_confidence_by_analyzer_id": {},
+                },
             },
             "placeholder_max_markers_per_kloc": 3.0,
             "placeholder_max_ratio": 0.02,

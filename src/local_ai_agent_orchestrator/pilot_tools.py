@@ -54,7 +54,10 @@ def reset_resume_flag() -> None:
 def create_plan(title: str, content: str) -> str:
     """Write a new plan .md file into the plans directory for pipeline processing."""
     s = get_settings()
-    safe_title = "".join(c if c.isalnum() or c in "-_ " else "" for c in title).strip()
+    raw = (title or "").strip()
+    if raw.lower().endswith(".md"):
+        raw = raw[:-3].strip()
+    safe_title = "".join(c if c.isalnum() or c in "-_ " else "" for c in raw).strip()
     if not safe_title:
         return "ERROR: Title must contain at least one alphanumeric character."
     filename = safe_title.replace(" ", "_") + ".md"
@@ -95,9 +98,11 @@ def pipeline_status() -> str:
             plan_tasks = q.get_plan_tasks(p["id"])
             failed = [t for t in plan_tasks if t.status == "failed"]
             completed = [t for t in plan_tasks if t.status == "completed"]
+            ws = q.workspace_for_plan(p["id"])
             lines.append(
-                f"  {p['filename']} [{p['status']}] "
-                f"— {len(completed)}/{len(plan_tasks)} done"
+                f"  id={p['id']}  file={p['filename']} [{p['status']}] "
+                f"workspace={ws}"
+                f" — {len(completed)}/{len(plan_tasks)} done"
                 + (f", {len(failed)} failed" if failed else "")
             )
             if failed:
@@ -114,7 +119,16 @@ def retry_failed(plan_id: str | None = None) -> str:
     """Reset failed tasks to pending so the pipeline can retry them."""
     if _QUEUE_REF is None:
         return "ERROR: Pipeline queue not available."
-    count = _QUEUE_REF.reset_failed_tasks(plan_id=plan_id)
+    resolved: str | None = None
+    if plan_id is not None and str(plan_id).strip():
+        ref = str(plan_id).strip()
+        resolved = _QUEUE_REF.resolve_plan_ref(ref)
+        if not resolved:
+            return (
+                f"ERROR: No plan matches {ref!r}. "
+                "Use pipeline_status for each plan's id= and file= values."
+            )
+    count = _QUEUE_REF.reset_failed_tasks(plan_id=resolved)
     if count == 0:
         return "No failed tasks to retry."
     return f"OK: Reset {count} failed task(s) to pending. Use /resume to start the pipeline."
@@ -218,7 +232,10 @@ PILOT_TOOL_SCHEMAS = list(TOOL_SCHEMAS) + [
                 "properties": {
                     "plan_id": {
                         "type": "string",
-                        "description": "Optional plan ID to scope retry (omit for all)",
+                        "description": (
+                            "Optional: scope retry to one plan. Use internal id or filename "
+                            "(e.g. MyPlan.md) from pipeline_status."
+                        ),
                     },
                 },
                 "required": [],

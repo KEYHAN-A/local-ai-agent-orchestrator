@@ -67,6 +67,13 @@ class TestCreatePlan(unittest.TestCase):
         result = create_plan("!!!", "content")
         self.assertIn("ERROR", result)
 
+    def test_strips_md_suffix_from_title(self):
+        from local_ai_agent_orchestrator.pilot_tools import create_plan
+        result = create_plan("FIX_AUTH_MANAGER.md", "# Fix\n")
+        self.assertIn("OK", result)
+        plan_file = self.td / "plans" / "FIX_AUTH_MANAGER.md"
+        self.assertTrue(plan_file.exists())
+
 
 class TestPipelineStatus(unittest.TestCase):
     def setUp(self):
@@ -116,6 +123,8 @@ class TestPipelineStatus(unittest.TestCase):
         result = pipeline_status()
         self.assertIn("pending: 2", result)
         self.assertIn("test.md", result)
+        self.assertIn("workspace=", result)
+        self.assertIn("id=", result)
 
 
 class TestRetryFailed(unittest.TestCase):
@@ -156,6 +165,29 @@ class TestRetryFailed(unittest.TestCase):
         self.assertIn("1", result)
         task = q.get_task(task.id)
         self.assertEqual(task.status, "pending")
+
+    def test_retry_scoped_by_plan_filename(self):
+        from local_ai_agent_orchestrator.pilot_tools import bind_queue, retry_failed
+        from local_ai_agent_orchestrator.state import TaskQueue
+        q = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        plan_id = q.register_plan("scoped.md", "# Scoped\ncontent")
+        q.add_tasks(plan_id, [
+            {"title": "T1", "description": "D1", "file_paths": [], "dependencies": []},
+        ])
+        task = q.next_pending()
+        q.mark_failed(task.id, "Test error")
+        bind_queue(q)
+        result = retry_failed(plan_id="scoped.md")
+        self.assertIn("OK", result)
+        self.assertEqual(q.get_task(task.id).status, "pending")
+
+    def test_retry_unknown_plan_ref_errors(self):
+        from local_ai_agent_orchestrator.pilot_tools import bind_queue, retry_failed
+        from local_ai_agent_orchestrator.state import TaskQueue
+        q = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        bind_queue(q)
+        result = retry_failed(plan_id="does-not-exist.md")
+        self.assertIn("ERROR", result)
 
 
 class TestResumePipeline(unittest.TestCase):

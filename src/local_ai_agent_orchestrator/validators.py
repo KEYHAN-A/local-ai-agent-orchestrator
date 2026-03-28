@@ -12,7 +12,11 @@ from typing import Optional
 
 from local_ai_agent_orchestrator.analyzers import run_registered_analyzers
 from local_ai_agent_orchestrator.consistency import run_consistency_checks
-from local_ai_agent_orchestrator.schema_lints import run_schema_lints, should_lint_file
+from local_ai_agent_orchestrator.schema_lints import (
+    _strip_swift_comments_and_strings,
+    run_schema_lints,
+    should_lint_file,
+)
 from local_ai_agent_orchestrator.settings import get_settings
 
 PLACEHOLDER_PATTERNS = (
@@ -90,6 +94,8 @@ def validate_files(
             on_command_result=on_validation_command_result,
         )
     )
+    if file_paths and any(rel.lower().endswith(".swift") for rel in file_paths):
+        findings.extend(_ios_swift_manifest_findings(workspace, plan_langs))
     return findings
 
 
@@ -163,13 +169,16 @@ def _placeholder_ratio_findings(total_markers: int, total_chars: int) -> list[Fi
 
 
 def _codable_findings(path: str, text: str) -> list[Finding]:
-    if "[String: Any]" in text and "Codable" in text:
+    probe = text
+    if path.lower().endswith(".swift"):
+        probe = _strip_swift_comments_and_strings(text)
+    if re.search(r"\[String\s*:\s*Any\]", probe) and re.search(r"\bCodable\b", probe):
         return [
             Finding(
                 severity="major",
                 issue_class="codable_any",
                 file_path=path,
-                message="`[String: Any]` used in a Codable type.",
+                message="`[String: Any]` used near a Codable type.",
                 fix_hint="Use typed models, enum payloads, or a custom codable wrapper.",
                 analyzer_id="swift_codable_scan",
                 analyzer_kind="heuristic",
@@ -177,6 +186,47 @@ def _codable_findings(path: str, text: str) -> list[Finding]:
             )
         ]
     return []
+
+
+def _ios_swift_manifest_findings(workspace: Path, plan_langs: set[str]) -> list[Finding]:
+    """Advisory when Swift sources exist but no Xcode/SPM manifest is present."""
+    if "swift" not in plan_langs:
+        return []
+    try:
+        swift_files = [p for p in workspace.rglob("*.swift") if p.is_file()]
+    except OSError:
+        return []
+    if not swift_files:
+        return []
+    if (workspace / "Package.swift").is_file():
+        return []
+    try:
+        has_xcode = any(
+            p.is_dir() and p.suffix == ".xcodeproj"
+            for p in workspace.iterdir()
+        )
+    except OSError:
+        has_xcode = False
+    if has_xcode:
+        return []
+    return [
+        Finding(
+            severity="minor",
+            issue_class="missing_ios_manifest",
+            file_path=None,
+            message=(
+                "Swift sources found but no Package.swift or .xcodeproj at workspace root; "
+                "the tree may not be buildable until you add one."
+            ),
+            fix_hint=(
+                "Add an Xcode project or Swift Package manifest, then set "
+                "orchestration.validation_build_cmd in factory.yaml (see docs/CONFIGURATION.md)."
+            ),
+            analyzer_id="ios_manifest_scan",
+            analyzer_kind="heuristic",
+            confidence=0.75,
+        )
+    ]
 
 
 def _synthetic_project_graph_findings(path: str, text: str) -> list[Finding]:

@@ -128,7 +128,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["-v"])
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("lao 3.0.7", out.getvalue())
+        self.assertIn("lao 3.0.8", out.getvalue())
 
     def test_main_version_flag_long(self):
         out = io.StringIO()
@@ -136,7 +136,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["--version"])
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("lao 3.0.7", out.getvalue())
+        self.assertIn("lao 3.0.8", out.getvalue())
 
 
 if __name__ == "__main__":
