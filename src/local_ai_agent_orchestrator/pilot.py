@@ -149,7 +149,7 @@ class PilotAgent:
 
     _KNOWN_SLASH_COMMANDS = frozenset({
         "/exit", "/quit", "/resume", "/continue", "/go",
-        "/clear", "/status", "/help", "/project",
+        "/clear", "/status", "/help", "/project", "/gates",
     })
 
     def _handle_slash_command(self, text: str) -> PilotResult | None:
@@ -188,6 +188,13 @@ class PilotAgent:
                 self._on_assistant_message(status)
             return None
 
+        if cmd == "/gates":
+            from local_ai_agent_orchestrator.pilot_tools import gate_summary
+            summary = gate_summary(arg.strip() or None)
+            if self._on_assistant_message:
+                self._on_assistant_message(summary)
+            return None
+
         if cmd == "/project":
             return self._handle_project_command(arg)
 
@@ -195,6 +202,7 @@ class PilotAgent:
             help_text = (
                 "Available commands:\n"
                 "  /status          — Show pipeline status\n"
+                "  /gates           — Show validation profile and inferred build/lint hints\n"
                 "  /resume          — Return to autopilot pipeline\n"
                 "  /clear           — Clear chat history\n"
                 "  /project         — List registered projects\n"

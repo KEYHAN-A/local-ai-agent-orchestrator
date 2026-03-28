@@ -56,6 +56,7 @@ def _write_example_config(dest: Path) -> None:
             "quality_gate_mode": "standard",
             "validation_build_cmd": None,
             "validation_lint_cmd": None,
+            "infer_validation_commands": True,
             "validation_profile": "default",
             "validation_profiles": {
                 "default": {
@@ -200,6 +201,7 @@ def _build_config_from_inputs(
             "quality_gate_mode": "standard",
             "validation_build_cmd": None,
             "validation_lint_cmd": None,
+            "infer_validation_commands": True,
             "validation_profile": "default",
             "validation_profiles": {
                 "default": {

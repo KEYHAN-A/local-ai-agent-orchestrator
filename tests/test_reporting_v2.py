@@ -92,6 +92,11 @@ class TestReportingV2(unittest.TestCase):
             )
             out = write_quality_report(q, pid)
             payload = json.loads(out.read_text(encoding="utf-8"))
+            md_path = ws / "LAO_QUALITY.md"
+            self.assertTrue(md_path.is_file())
+            self.assertIn("LAO quality report", md_path.read_text(encoding="utf-8"))
+            self.assertIn("validation_inference", payload)
+            self.assertIn("suggested_build", payload["validation_inference"])
             self.assertIn("report_meta", payload)
             self.assertIn("schema_version", payload["report_meta"])
             self.assertIn("preflight", payload)

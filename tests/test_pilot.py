@@ -83,7 +83,15 @@ class TestPilotAgentSlashCommands(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(len(messages), 1)
         self.assertIn("/status", messages[0])
+        self.assertIn("/gates", messages[0])
         self.assertIn("/resume", messages[0])
+
+    def test_gates_command(self):
+        agent, messages = self._make_agent()
+        result = agent._handle_slash_command("/gates")
+        self.assertIsNone(result)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("Validation gates", messages[0])
 
     def test_status_command(self):
         agent, messages = self._make_agent()

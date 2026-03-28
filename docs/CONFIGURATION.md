@@ -97,6 +97,16 @@ swift build
 
 When Swift sources exist but no manifest is at the workspace root, LAO emits a **minor** advisory (`missing_ios_manifest`) so you know the tree may not compile yet.
 
+### Inferred validation commands
+
+- **`orchestration.infer_validation_commands`** (default **true**): when the active **`validation_profiles[profile].commands`** list does not already include **`kind: build`** or **`kind: lint`**, and **`validation_build_cmd`** / **`validation_lint_cmd`** are unset, LAO infers conservative commands from common manifests in the **per-plan workspace** (`package.json` scripts, Python **`pyproject.toml`** / tests, **`go.mod`**, **`Cargo.toml`**, **`Package.swift`**).
+- Inference is **best-effort** and **host-only** (your machine must have the tools). Disable with **`infer_validation_commands: false`** if you want only explicit YAML commands.
+- **`quality_report.json`** and **`LAO_QUALITY.md`** (same folder) include a **`validation_inference`** snapshot with suggested commands. Pilot exposes the same via the **`gate_summary`** tool and **`/gates`** (optional plan id / filename after the command).
+
+### Optional security-oriented profile
+
+Host scanners can be wired like any other profile command (see commented **`security_host`** example in **`factory.example.yaml`**). LAO does not install these tools; they must be on your **`PATH`**.
+
 ### Pilot tools and `retry_failed`
 
 - **`pipeline_status`** lists each plan’s internal **`id=`**, **`file=`**, and **`workspace=`** path. **`retry_failed`** accepts that **id**, the **filename** (e.g. `MyPlan.md`), or the stem (`MyPlan`).

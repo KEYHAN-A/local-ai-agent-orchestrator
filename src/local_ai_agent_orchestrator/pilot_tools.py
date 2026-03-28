@@ -23,7 +23,9 @@ from local_ai_agent_orchestrator.tools import (
     list_dir,
     shell_exec,
     find_relevant_files,
+    pick_pilot_tools_workspace,
 )
+from local_ai_agent_orchestrator.validators import infer_plan_languages, infer_validation_commands
 
 if TYPE_CHECKING:
     from local_ai_agent_orchestrator.state import TaskQueue
@@ -190,6 +192,58 @@ def project_status(name_or_path: str = "") -> str:
     return "\n".join(lines)
 
 
+def gate_summary(plan_ref: str | None = None) -> str:
+    """Summarize validation profile, explicit commands, and manifest-inferred build/lint hints."""
+    s = get_settings()
+    ws: Path
+    if _QUEUE_REF is not None:
+        if plan_ref and str(plan_ref).strip():
+            pid = _QUEUE_REF.resolve_plan_ref(str(plan_ref).strip())
+            if not pid:
+                return (
+                    f"ERROR: No plan matches {plan_ref!r}. "
+                    "Use pipeline_status for id= or file= values."
+                )
+            ws = _QUEUE_REF.workspace_for_plan(pid)
+        else:
+            ws = pick_pilot_tools_workspace(_QUEUE_REF)
+    else:
+        ws = s.workspace_root.resolve()
+    if not ws.is_dir():
+        return f"ERROR: Workspace path is not a directory: {ws}"
+
+    langs = infer_plan_languages(ws)
+    ib, il = infer_validation_commands(ws, langs)
+    profile_name = s.validation_profile
+    profile = s.validation_profiles.get(
+        profile_name, s.validation_profiles.get("default", {})
+    )
+    lines = [
+        "## Validation gates",
+        f"- Workspace: `{ws}`",
+        f"- Active profile: `{profile_name}`",
+        f"- Manifest inference (orchestration.infer_validation_commands): {s.infer_validation_commands}",
+    ]
+    cmds = profile.get("commands") or []
+    if cmds:
+        lines.append("- Profile commands:")
+        for row in cmds:
+            if isinstance(row, dict) and row.get("command"):
+                lines.append(f"  - [{row.get('kind', 'cmd')}] {row['command']}")
+    else:
+        lines.append("- Profile commands: (none)")
+    if s.validation_build_cmd:
+        lines.append(f"- Explicit **validation_build_cmd**: `{s.validation_build_cmd}`")
+    if s.validation_lint_cmd:
+        lines.append(f"- Explicit **validation_lint_cmd**: `{s.validation_lint_cmd}`")
+    lines.append("### Inferred when build/lint slots are free")
+    lines.append(f"- Suggested build: `{ib or '—'}`")
+    lines.append(f"- Suggested lint: `{il or '—'}`")
+    lang_display = ", ".join(sorted(langs)) if langs else "(none from plan / extensions)"
+    lines.append(f"- Plan / extension language hints: {lang_display}")
+    return "\n".join(lines)
+
+
 # ── Combined schemas and dispatch ────────────────────────────────────
 
 PILOT_TOOL_SCHEMAS = list(TOOL_SCHEMAS) + [
@@ -288,6 +342,29 @@ PILOT_TOOL_SCHEMAS = list(TOOL_SCHEMAS) + [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "gate_summary",
+            "description": (
+                "Show validation gate configuration: profile commands, explicit build/lint YAML, "
+                "and conservative commands inferred from package manifests in the workspace"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_ref": {
+                        "type": "string",
+                        "description": (
+                            "Optional plan id, filename, or stem to scope the workspace; "
+                            "omit to use the pilot tool workspace pick"
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 PILOT_TOOL_DISPATCH = {
@@ -298,4 +375,5 @@ PILOT_TOOL_DISPATCH = {
     "resume_pipeline": lambda **kw: resume_pipeline(),
     "codebase_search": codebase_search,
     "project_status": project_status,
+    "gate_summary": lambda plan_ref=None, **kw: gate_summary(plan_ref),
 }

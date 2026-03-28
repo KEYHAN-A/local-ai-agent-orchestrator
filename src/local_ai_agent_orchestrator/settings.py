@@ -110,6 +110,7 @@ class Settings:
     quality_gate_mode: str = "standard"
     validation_build_cmd: Optional[str] = None
     validation_lint_cmd: Optional[str] = None
+    infer_validation_commands: bool = True
     validation_profile: str = "default"
     validation_profiles: dict[str, dict[str, Any]] = field(
         default_factory=lambda: {
@@ -305,6 +306,9 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 str(orch["validation_lint_cmd"])
                 if orch.get("validation_lint_cmd") is not None
                 else base.validation_lint_cmd
+            ),
+            infer_validation_commands=bool(
+                orch.get("infer_validation_commands", base.infer_validation_commands)
             ),
             validation_profile=str(orch.get("validation_profile", base.validation_profile)),
             placeholder_max_markers_per_kloc=float(

@@ -26,6 +26,9 @@ orchestration:
   # validation_lint_cmd: swiftlint lint --strict
   validation_build_cmd: null
   validation_lint_cmd: null
+  # When true (default), LAO suggests build/lint from package.json, pyproject.toml, go.mod, etc.
+  # when the active profile does not already define kind "build" / "lint" and explicit cmds are unset.
+  infer_validation_commands: true
   validation_profile: default
   validation_profiles:
     default:
@@ -40,6 +43,19 @@ orchestration:
       block_min_confidence: 0.6
       block_min_confidence_by_analyzer_kind: {}
       block_min_confidence_by_analyzer_id: {}
+  # Optional host-only security profile (install semgrep / bandit on the machine first):
+  # validation_profile: security_host
+  # validation_profiles:
+  #   security_host:
+  #     commands:
+  #       - kind: lint
+  #         command: semgrep scan --config auto --quiet
+  #       - kind: lint
+  #         command: bandit -q -r src
+  #     block_on_severities: [critical, major]
+  #     block_min_confidence: 0.6
+  #     block_min_confidence_by_analyzer_kind: {}
+  #     block_min_confidence_by_analyzer_id: {}
   placeholder_max_markers_per_kloc: 3.0
   placeholder_max_ratio: 0.02
   preflight_reserved_tokens: 256

@@ -31,8 +31,14 @@ class TestPilotToolSchemas(unittest.TestCase):
     def test_pilot_specific_tools_present(self):
         from local_ai_agent_orchestrator.pilot_tools import PILOT_TOOL_SCHEMAS
         names = {s["function"]["name"] for s in PILOT_TOOL_SCHEMAS}
-        for expected in ("create_plan", "pipeline_status", "retry_failed",
-                         "resume_pipeline", "codebase_search"):
+        for expected in (
+            "create_plan",
+            "pipeline_status",
+            "retry_failed",
+            "resume_pipeline",
+            "codebase_search",
+            "gate_summary",
+        ):
             self.assertIn(expected, names)
 
 
@@ -125,6 +131,19 @@ class TestPipelineStatus(unittest.TestCase):
         self.assertIn("test.md", result)
         self.assertIn("workspace=", result)
         self.assertIn("id=", result)
+
+    def test_gate_summary_with_queue(self):
+        from local_ai_agent_orchestrator.pilot_tools import bind_queue, gate_summary
+        from local_ai_agent_orchestrator.state import TaskQueue
+
+        q = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        bind_queue(q)
+        try:
+            text = gate_summary()
+            self.assertIn("Validation gates", text)
+            self.assertIn("infer_validation_commands", text)
+        finally:
+            bind_queue(None)
 
 
 class TestRetryFailed(unittest.TestCase):

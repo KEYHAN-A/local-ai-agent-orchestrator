@@ -347,6 +347,20 @@ def run_optional_validation_commands(
         cmd_rows.append(("build", settings.validation_build_cmd))
     if settings.validation_lint_cmd:
         cmd_rows.append(("lint", settings.validation_lint_cmd))
+
+    kinds_present = {k for k, _ in cmd_rows}
+    existing_cmds = {c.strip() for _, c in cmd_rows if c}
+    if settings.infer_validation_commands:
+        ib, il = infer_validation_commands(workspace, plan_langs)
+        if ib and ib.strip() not in existing_cmds and "build" not in kinds_present:
+            cmd_rows.append(("build", ib.strip()))
+            existing_cmds.add(ib.strip())
+            kinds_present.add("build")
+        if il and il.strip() not in existing_cmds and "lint" not in kinds_present:
+            cmd_rows.append(("lint", il.strip()))
+            existing_cmds.add(il.strip())
+            kinds_present.add("lint")
+
     for kind, cmd in cmd_rows:
         if not cmd:
             continue
@@ -449,12 +463,183 @@ def infer_plan_languages(workspace: Path) -> set[str]:
     return langs
 
 
+_SKIP_DIR_PARTS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".tox",
+        "dist",
+        "build",
+        ".eggs",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+)
+
+
+def _path_has_skip_dir(path: Path) -> bool:
+    return bool(_SKIP_DIR_PARTS.intersection(path.parts))
+
+
+def _find_python_test_files(workspace: Path) -> bool:
+    for pattern in ("test_*.py", "*_test.py"):
+        for p in workspace.glob(f"**/{pattern}"):
+            if p.is_file() and not _path_has_skip_dir(p):
+                return True
+    return False
+
+
+def _python_compileall_targets(workspace: Path) -> list[str]:
+    rels: list[str] = []
+    for name in ("src", "lib", "app", "tests", "test"):
+        d = workspace / name
+        if d.is_dir() and any(d.rglob("*.py")):
+            rels.append(name)
+    if rels:
+        return rels
+    if any(workspace.glob("*.py")):
+        return ["."]
+    return []
+
+
+def _pyproject_mentions_ruff(text: str) -> bool:
+    t = text.lower()
+    return "[tool.ruff]" in t or "ruff>" in t or "ruff =" in t or '"ruff"' in t
+
+
+def _infer_python_commands(workspace: Path) -> tuple[str | None, str | None]:
+    build_cmd: str | None = None
+    lint_cmd: str | None = None
+    pyproject = workspace / "pyproject.toml"
+    toml_text = ""
+    if pyproject.is_file():
+        try:
+            toml_text = pyproject.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            toml_text = ""
+
+    if _find_python_test_files(workspace):
+        build_cmd = "pytest -q --tb=short --maxfail=3"
+    else:
+        targets = _python_compileall_targets(workspace)
+        if targets:
+            build_cmd = "python -m compileall -q " + " ".join(targets)
+
+    if toml_text and _pyproject_mentions_ruff(toml_text):
+        lint_cmd = "ruff check ."
+    return build_cmd, lint_cmd
+
+
+def _node_script_invocation(workspace: Path, script_name: str) -> str:
+    if (workspace / "pnpm-lock.yaml").is_file():
+        return f"pnpm run {script_name}"
+    if (workspace / "yarn.lock").is_file():
+        return f"yarn {script_name}"
+    return f"npm run {script_name}"
+
+
+def _infer_node_commands(workspace: Path) -> tuple[str | None, str | None]:
+    pkg = workspace / "package.json"
+    if not pkg.is_file():
+        return None, None
+    try:
+        data = json.loads(pkg.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return None, None
+    scripts = data.get("scripts") if isinstance(data, dict) else None
+    if not isinstance(scripts, dict):
+        return None, None
+
+    def pick_script(*names: str) -> str | None:
+        for n in names:
+            v = scripts.get(n)
+            if isinstance(v, str) and v.strip():
+                return n
+        return None
+
+    build_name = pick_script("build", "compile", "test", "check")
+    lint_name = pick_script("lint", "eslint")
+    build_cmd = _node_script_invocation(workspace, build_name) if build_name else None
+    lint_cmd = _node_script_invocation(workspace, lint_name) if lint_name else None
+    return build_cmd, lint_cmd
+
+
+def _infer_go_commands(workspace: Path) -> tuple[str | None, str | None]:
+    if not (workspace / "go.mod").is_file():
+        return None, None
+    return "go build ./...", "go vet ./..."
+
+
+def _infer_rust_commands(workspace: Path) -> tuple[str | None, str | None]:
+    if not (workspace / "Cargo.toml").is_file():
+        return None, None
+    return "cargo check", "cargo clippy -q"
+
+
+def _infer_swift_commands(workspace: Path) -> tuple[str | None, str | None]:
+    if not (workspace / "Package.swift").is_file():
+        return None, None
+    return "swift build", "swiftlint lint --quiet"
+
+
 def infer_validation_commands(workspace: Path, langs: set[str]) -> tuple[str | None, str | None]:
     """
-    Reserved for future plan-provided explicit command extraction.
-    Default behavior is non-prescriptive.
+    Infer conservative build/lint shell commands from common project manifests.
+
+    When multiple stacks are present, prefers manifests whose language appears in
+    ``langs`` (from the plan); otherwise uses a fixed manifest priority order.
     """
-    return (None, None)
+    if not workspace.is_dir():
+        return (None, None)
+
+    rows: list[tuple[int, str | None, str | None]] = []
+
+    def push(priority: int, b: str | None, l: str | None) -> None:
+        if b or l:
+            rows.append((priority, b, l))
+
+    if (workspace / "package.json").is_file():
+        b, l = _infer_node_commands(workspace)
+        pri = 0 if langs & {"javascript", "typescript"} else 30
+        push(pri, b, l)
+
+    if (workspace / "pyproject.toml").is_file() or (workspace / "setup.py").is_file():
+        b, l = _infer_python_commands(workspace)
+        pri = 0 if "python" in langs else 20
+        push(pri, b, l)
+
+    if (workspace / "go.mod").is_file():
+        b, l = _infer_go_commands(workspace)
+        pri = 0 if "go" in langs else 40
+        push(pri, b, l)
+
+    if (workspace / "Cargo.toml").is_file():
+        b, l = _infer_rust_commands(workspace)
+        pri = 0 if "rust" in langs else 50
+        push(pri, b, l)
+
+    if (workspace / "Package.swift").is_file():
+        b, l = _infer_swift_commands(workspace)
+        pri = 0 if "swift" in langs else 60
+        push(pri, b, l)
+
+    if not rows:
+        return (None, None)
+
+    rows.sort(key=lambda r: r[0])
+    best_build: str | None = None
+    best_lint: str | None = None
+    for _, b, l in rows:
+        if best_build is None and b:
+            best_build = b
+        if best_lint is None and l:
+            best_lint = l
+        if best_build and best_lint:
+            break
+    return (best_build, best_lint)
 
 
 def score_plan_languages(text: str) -> dict[str, int]:

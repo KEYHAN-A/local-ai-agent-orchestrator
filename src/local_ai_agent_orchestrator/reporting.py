@@ -8,7 +8,42 @@ from pathlib import Path
 from local_ai_agent_orchestrator.report_schema import build_report_meta
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import TaskQueue
-from local_ai_agent_orchestrator.validators import infer_plan_languages
+from local_ai_agent_orchestrator.validators import infer_plan_languages, infer_validation_commands
+
+
+def _write_lao_quality_markdown(workspace: Path, payload: dict) -> Path:
+    """Human-readable summary next to quality_report.json."""
+    tc = payload.get("task_counts", {})
+    q = payload.get("quality", {})
+    tr = payload.get("traceability_summary", {})
+    contracts = payload.get("contracts", {})
+    vi = payload.get("validation_inference") or {}
+    lines = [
+        "# LAO quality report",
+        "",
+        "## Summary",
+        f"- **Plan** `{payload.get('plan_id', '')}`",
+        f"- **Tasks** — completed: {tc.get('completed', 0)}, failed: {tc.get('failed', 0)}, "
+        f"pending/in-flight: {tc.get('pending_or_inflight', 0)} (total {tc.get('total', 0)})",
+        f"- **Findings** — total: {q.get('total_findings', 0)}, critical: {q.get('critical_findings', 0)}",
+        f"- **Deliverables** — validated {tr.get('deliverables_validated', 0)} / "
+        f"{tr.get('deliverables_total', 0)} (alignment score {tr.get('architecture_alignment_score', 0)})",
+        f"- **Validation runs** — failed: {contracts.get('failed_validation_runs', 0)} / "
+        f"{contracts.get('total_validation_runs', 0)}",
+        f"- **Strict closure** — enabled: {contracts.get('strict_adherence_enabled', False)}, "
+        f"satisfied: {contracts.get('closure_satisfied', False)}",
+        "",
+        "## Inferred validation commands",
+        f"- Manifest inference enabled: {vi.get('enabled', False)}",
+        f"- Suggested build: `{vi.get('suggested_build') or '—'}`",
+        f"- Suggested lint: `{vi.get('suggested_lint') or '—'}`",
+        "",
+        "_Machine-readable data: `quality_report.json` in this folder._",
+        "",
+    ]
+    out = workspace / "LAO_QUALITY.md"
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out
 
 
 def _load_json_if_exists(path: Path) -> dict | None:
@@ -117,10 +152,20 @@ def write_quality_report(
         ),
     }
 
+    plan_langs = infer_plan_languages(ws)
+    settings = get_settings()
+    ib, il = infer_validation_commands(ws, plan_langs)
+    validation_inference = {
+        "enabled": bool(settings.infer_validation_commands),
+        "suggested_build": ib,
+        "suggested_lint": il,
+    }
+
     payload = {
         "report_meta": build_report_meta(),
         "plan_id": plan_id,
-        "detected_languages": sorted(infer_plan_languages(ws)),
+        "detected_languages": sorted(plan_langs),
+        "validation_inference": validation_inference,
         "task_counts": {
             "total": len(tasks),
             "completed": completed,
@@ -180,4 +225,5 @@ def write_quality_report(
     }
     out = ws / "quality_report.json"
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _write_lao_quality_markdown(ws, payload)
     return out

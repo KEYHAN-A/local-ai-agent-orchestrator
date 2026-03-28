@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Tests for validation helpers."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ from local_ai_agent_orchestrator.validators import (
     infer_plan_languages,
     score_plan_languages,
     infer_languages_from_extensions,
+    infer_validation_commands,
     run_optional_validation_commands,
 )
 
@@ -156,6 +158,89 @@ class TestValidators(unittest.TestCase):
         self.assertIn("scala", langs)
         self.assertIn("zig", langs)
         self.assertIn("csharp", langs)
+
+    def test_infer_validation_python_pytest_and_ruff(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            (ws / "tests").mkdir()
+            (ws / "tests" / "test_x.py").write_text("def test_x():\n    assert True\n", encoding="utf-8")
+            (ws / "pyproject.toml").write_text("[tool.ruff]\nline-length = 88\n", encoding="utf-8")
+            b, l = infer_validation_commands(ws, {"python"})
+            self.assertEqual(b, "pytest -q --tb=short --maxfail=3")
+            self.assertEqual(l, "ruff check .")
+
+    def test_infer_validation_node_uses_package_manager(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            (ws / "package.json").write_text(
+                json.dumps({"scripts": {"build": "tsc", "lint": "eslint ."}}),
+                encoding="utf-8",
+            )
+            (ws / "pnpm-lock.yaml").write_text("lockfile: stub\n", encoding="utf-8")
+            b, l = infer_validation_commands(ws, {"typescript"})
+            self.assertEqual(b, "pnpm run build")
+            self.assertEqual(l, "pnpm run lint")
+
+    def test_run_optional_skips_infer_when_profile_has_build_kind(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(
+                "\n".join(
+                    [
+                        "lm_studio_base_url: http://127.0.0.1:1234",
+                        "openai_api_key: lm-studio",
+                        "orchestration:",
+                        "  validation_profile: default",
+                        "  validation_profiles:",
+                        "    default:",
+                        "      commands:",
+                        "        - kind: build",
+                        "          command: \"python -c 'import sys; sys.exit(0)'\"",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            init_settings(config_path=cfg, cwd=root)
+            ws = root / "ws"
+            ws.mkdir()
+            (ws / "package.json").write_text(
+                json.dumps({"scripts": {"test": "python -c \"import sys; sys.exit(1)\""}}),
+                encoding="utf-8",
+            )
+            findings = run_optional_validation_commands(ws, {"javascript"})
+            self.assertEqual(findings, [])
+
+    def test_run_optional_respects_infer_validation_commands_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(
+                "\n".join(
+                    [
+                        "lm_studio_base_url: http://127.0.0.1:1234",
+                        "openai_api_key: lm-studio",
+                        "orchestration:",
+                        "  infer_validation_commands: false",
+                        "  validation_profile: default",
+                        "  validation_profiles:",
+                        "    default:",
+                        "      commands: []",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            init_settings(config_path=cfg, cwd=root)
+            ws = root / "ws"
+            ws.mkdir()
+            (ws / "package.json").write_text(
+                json.dumps({"scripts": {"test": "python -c \"import sys; sys.exit(1)\""}}),
+                encoding="utf-8",
+            )
+            findings = run_optional_validation_commands(ws, {"javascript"})
+            self.assertEqual(findings, [])
 
 
 if __name__ == "__main__":

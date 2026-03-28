@@ -4,7 +4,14 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 
 ## Unreleased
 
-- **Docs:** README **Prerequisites (LM Studio)** (install app, local server, keys); **Requirements** clarifies desktop app + load/unload API vs generic OpenAI-compatible chat; **site** install note and **CONFIGURATION** intro tie memory-aware switching to LM Studio’s REST API.
+## v3.0.9 — Validation inference, LAO_QUALITY.md, Pilot /gates, reviewer rubrics
+
+- **Validation inference:** `orchestration.infer_validation_commands` (default **true**) suggests conservative **build** / **lint** commands from common manifests (`package.json`, `pyproject.toml` / `setup.py`, `go.mod`, `Cargo.toml`, `Package.swift`); merged into `run_optional_validation_commands` when profile slots for `build` / `lint` are free and explicit `validation_build_cmd` / `validation_lint_cmd` are unset (with command-string dedupe).
+- **Reporting:** `quality_report.json` includes `validation_inference`; **`LAO_QUALITY.md`** is written beside it as a short human summary.
+- **Reviewer:** Task-keyword rubric hints appended in `build_reviewer_messages` for API/HTTP, database, security, UI, and CLI-style tasks.
+- **Pilot:** **`gate_summary`** tool and **`/gates`** slash command (optional plan ref); `factory.example.yaml` and `lao init` templates document the flag; commented optional host **security** profile example (semgrep/bandit).
+- **Docs:** **CONFIGURATION.md** covers inference, `LAO_QUALITY.md`, `/gates`, and optional security profiles.
+- **Tests:** Validators, reporting, pilot, pilot tools, and prompt rubric coverage.
 
 ## v3.0.8 — Pilot workspace, Swift validation, plan ergonomics
 

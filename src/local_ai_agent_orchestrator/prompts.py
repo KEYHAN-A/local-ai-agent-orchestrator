@@ -74,6 +74,64 @@ Respond with EXACTLY one JSON object:
 {"verdict":"APPROVED|REJECTED","findings":[{"severity":"critical|major|minor","file_path":"string","issue_class":"string","message":"string","fix_hint":"string"}],"summary":"string"}
 If approved, findings can be an empty array."""
 
+# Keyword tuples → extra review bullets (task title + description, lowercased).
+_REVIEWER_TASK_RUBRICS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        ("api", "rest", "http", "endpoint", "graphql", "grpc", "websocket"),
+        (
+            "Validate request/response contracts, error status codes, and timeouts.",
+            "Check authentication/authorization on mutating routes.",
+            "Look for injection (SQL/NoSQL, shell, path) in inputs and logging.",
+        ),
+    ),
+    (
+        ("database", "sql", "postgres", "mysql", "sqlite", "migration", "orm"),
+        (
+            "Migrations are safe (reversible where possible) and indexed for hot queries.",
+            "No SQL string concatenation; parameterized queries only.",
+        ),
+    ),
+    (
+        ("security", "auth", "oauth", "jwt", "password", "crypto", "secret"),
+        (
+            "Secrets must not be logged or committed; use existing secret/config patterns.",
+            "Cryptographic choices use vetted primitives and correct parameters.",
+        ),
+    ),
+    (
+        ("ui", "frontend", "react", "vue", "swiftui", "compose", "css", "a11y"),
+        (
+            "User-visible errors are handled; loading and empty states where appropriate.",
+            "Accessibility basics: labels, focus, contrast for interactive controls.",
+        ),
+    ),
+    (
+        ("cli", "command", "argv", "subcommand", "flag"),
+        (
+            "Exit codes and stderr usage follow CLI conventions; help text matches behavior.",
+        ),
+    ),
+)
+
+
+def _reviewer_rubric_extras(title: str, description: str) -> str:
+    blob = f"{title}\n{description}".lower()
+    bullets: list[str] = []
+    for keys, hints in _REVIEWER_TASK_RUBRICS:
+        if any(k in blob for k in keys):
+            bullets.extend(hints)
+    if not bullets:
+        return ""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for b in bullets:
+        if b not in seen:
+            seen.add(b)
+            ordered.append(b)
+    body = "\n".join(f"- {line}" for line in ordered)
+    return f"\n## Task-specific review hints\n{body}\n"
+
+
 PILOT_SYSTEM = """You are the LAO Pilot — an interactive command agent for a local AI coding orchestrator.
 
 You have direct access to the project workspace and can execute tools on the user's behalf.
@@ -88,6 +146,7 @@ Capabilities:
 - Create new plans that feed back into the LAO autopilot pipeline
 - Retry failed tasks from the pipeline
 - Resume the autopilot pipeline when ready
+- Summarize validation gates for the workspace (`gate_summary` tool or `/gates`)
 
 Guidelines:
 - Be concise and action-oriented. Prefer doing over explaining.
@@ -163,8 +222,9 @@ def build_reviewer_messages(
     code_output: str,
 ) -> list[dict]:
     """Build messages for the reviewer phase."""
+    rubric = _reviewer_rubric_extras(task.title, task.description)
     content = (
-        f"## Task Specification: {task.title}\n\n{task.description}\n\n"
+        f"## Task Specification: {task.title}\n\n{task.description}{rubric}\n"
         f"## Code to Review:\n\n{code_output}"
     )
 
