@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from local_ai_agent_orchestrator.state import TaskQueue
@@ -74,7 +76,17 @@ def build_dashboard_snapshot(queue: TaskQueue, previous: dict | None = None) -> 
 
 def write_dashboard_snapshot(workspace: Path, payload: dict) -> Path:
     out = workspace / "dashboard_snapshot.json"
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=workspace, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        os.replace(tmp_path, out)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return out
 
 

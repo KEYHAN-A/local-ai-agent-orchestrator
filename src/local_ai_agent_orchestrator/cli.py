@@ -355,7 +355,7 @@ def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
     if not ui.ask_yes_no("Use suggested model keys?", True):
         ui.print_section("Step 4/5 — Manual Model Keys")
         ui.print_info("Enter LM Studio model keys (`lms ls` can list keys).")
-        for role in ("planner", "coder", "reviewer", "embedder", "pilot"):
+        for role in ("planner", "coder", "reviewer", "embedder", "pilot", "analyst"):
             picked[role] = ui.ask_text(f"{role} model", picked[role])
 
     config = _build_config_from_inputs(
@@ -425,7 +425,7 @@ def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
     ui.print_section("Role Mapping")
     ui.print_info("Press Enter to keep a role unchanged.")
     changed: list[str] = []
-    for role in ("planner", "coder", "reviewer", "embedder", "pilot"):
+    for role in ("planner", "coder", "reviewer", "embedder", "pilot", "analyst"):
         role_cfg = (data.get("models") or {}).get(role) or {}
         cur = role_cfg.get("key", "")
         new_key = ui.ask_text(f"{role} model key", cur)
@@ -728,6 +728,7 @@ def main(argv: list[str] | None = None) -> None:
     global_opts.add_argument("--reviewer-model", dest="reviewer_model", default=None)
     global_opts.add_argument("--embedder-model", dest="embedder_model", default=None)
     global_opts.add_argument("--pilot-model", dest="pilot_model", default=None)
+    global_opts.add_argument("--analyst-model", dest="analyst_model", default=None)
     global_opts.add_argument(
         "--plan",
         type=str,
@@ -787,6 +788,11 @@ def main(argv: list[str] | None = None) -> None:
         "--pilot-only",
         action="store_true",
         help="Enter Pilot Mode immediately without running the pipeline",
+    )
+    run_opts.add_argument(
+        "--no-analyst",
+        action="store_true",
+        help="Skip the analyst phase (no project-wide context report before architect)",
     )
 
     sub = parser.add_subparsers(dest="command", help="Command")
@@ -916,6 +922,8 @@ def main(argv: list[str] | None = None) -> None:
             model_keys["embedder"] = args.embedder_model
         if args.pilot_model:
             model_keys["pilot"] = args.pilot_model
+        if args.analyst_model:
+            model_keys["analyst"] = args.analyst_model
 
         overrides = {}
         if args.lm_studio_base:
@@ -944,6 +952,8 @@ def main(argv: list[str] | None = None) -> None:
             overrides["architect_only"] = True
         if args.no_pilot:
             overrides["pilot_mode_enabled"] = False
+        if args.no_analyst:
+            overrides["analyst_enabled"] = False
 
         if args.command == "configure-models":
             raise SystemExit(_configure_models_interactive(cwd, cfg_path))

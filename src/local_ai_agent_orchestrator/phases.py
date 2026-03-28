@@ -1,13 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
-Orchestration phases: Architect, Coder, Reviewer.
+Orchestration phases: Analyst, Architect, Coder, Reviewer.
 
 Each phase:
 1. Ensures the correct model is loaded via ModelManager
 2. Builds messages via prompts module
 3. Calls the OpenAI-compatible API on LM Studio
-4. Handles tool calls (coder only) or parses structured output (architect)
+4. Handles tool calls (coder only) or parses structured output (architect/analyst)
 5. Updates persistent state in SQLite
+
+Phase order per plan:
+  Phase 0 (Analyst)   -- read-only workspace survey; writes analyst_report.json + ANALYST.md
+  Phase 1 (Architect) -- plan decomposition into micro-tasks; reads analyst summary
+  Phase 2 (Coder)     -- implements each micro-task with tool loop
+  Phase 3 (Reviewer)  -- validates and reviews coder output; reads analyst context
+
+Future: consider splitting into analyst.py / architect.py / coder.py / reviewer.py
+once the public API stabilises.  All public names are re-exported from this module
+for backward compatibility with runner.py, benchmarks.py, and tests.
 """
 
 import json
@@ -23,8 +33,10 @@ from local_ai_agent_orchestrator.interrupts import interruptible_sleep, should_s
 
 from openai import OpenAI
 
+from local_ai_agent_orchestrator.analyst import build_analyst_input, parse_analyst_report
 from local_ai_agent_orchestrator.model_manager import ModelManager
 from local_ai_agent_orchestrator.prompts import (
+    build_analyst_messages,
     build_architect_messages,
     build_architect_summary_messages,
     build_coder_messages,
@@ -250,7 +262,215 @@ def _llm_call(
     )
 
 
+# ── Phase 0: Analyst ─────────────────────────────────────────────────
+
+_ANALYST_REPORT_JSON = "analyst_report.json"
+_ANALYST_REPORT_MD = "ANALYST.md"
+
+
+def analyst_phase(
+    mm: ModelManager,
+    queue: TaskQueue,
+    plan_id: str,
+    plan_text: str,
+    workspace: Path,
+) -> Optional[dict]:
+    """
+    Read-only project survey phase.  Loads the analyst model, assembles a
+    tiered workspace snapshot, calls the LLM once, and writes:
+      - <workspace>/analyst_report.json
+      - <workspace>/ANALYST.md
+
+    Returns the parsed report dict, or None if the phase is skipped/fails.
+    The phase is idempotent: if analyst_report.json already exists it is
+    returned immediately without re-running the LLM.
+    """
+    import json as _json
+    import os
+    import tempfile
+
+    report_path = workspace / _ANALYST_REPORT_JSON
+    if report_path.exists():
+        try:
+            existing = _json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                log.info("[Analyst] Reusing existing report for plan %s", plan_id)
+                return existing
+        except Exception:
+            pass
+
+    cfg = get_settings().models["analyst"]
+    model_key = mm.ensure_loaded("analyst")
+    client = _get_client()
+    s = get_settings()
+
+    log.info("[Analyst] Assembling workspace snapshot for plan %s", plan_id)
+    analyst_input = build_analyst_input(
+        workspace=workspace,
+        plan_text=plan_text,
+        context_length=cfg.context_length,
+        max_completion=cfg.max_completion,
+        max_context_utilization=s.max_context_utilization,
+    )
+
+    messages = build_analyst_messages(analyst_input)
+    start = time.time()
+
+    try:
+        response = _llm_call(
+            client,
+            model_key,
+            messages,
+            max_tokens=cfg.max_completion,
+            temperature=0.1,
+        )
+        content = response.choices[0].message.content or ""
+        duration = time.time() - start
+        usage = response.usage
+
+        queue.log_run(
+            task_id=None,
+            phase="analyst",
+            model_key=model_key,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+            duration_seconds=duration,
+            success=True,
+        )
+
+        report = parse_analyst_report(content)
+        if not report:
+            log.warning("[Analyst] Could not parse JSON report; storing raw text")
+            report = {"summary": content[:2000], "raw": True}
+
+        # Atomic write of JSON report
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=workspace, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                _json.dump(report, fh, indent=2)
+            os.replace(tmp_path, report_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+        # Write human-readable markdown summary
+        _write_analyst_markdown(workspace / _ANALYST_REPORT_MD, report)
+
+        log.info(
+            "[Analyst] Report written in %.1fs (%d chars input)",
+            duration,
+            len(analyst_input),
+        )
+        return report
+
+    except Exception as e:
+        duration = time.time() - start
+        queue.log_run(
+            task_id=None,
+            phase="analyst",
+            model_key=model_key,
+            duration_seconds=duration,
+            success=False,
+            error=str(e),
+        )
+        log.warning("[Analyst] Phase failed: %s -- continuing without report", e)
+        return None
+
+
+def _write_analyst_markdown(path: Path, report: dict) -> None:
+    """Write a human-readable ANALYST.md from the parsed report dict."""
+    lines = ["# LAO Analyst Report", ""]
+    summary = report.get("summary", "")
+    if summary:
+        lines += ["## Summary", summary, ""]
+
+    build_sys = report.get("build_system") or {}
+    if build_sys:
+        lines += [
+            "## Build System",
+            f"- Detected: `{build_sys.get('detected', '—')}`",
+            f"- Manifests: {', '.join(f'`{m}`' for m in (build_sys.get('manifest_files') or []))  or '—'}",
+            f"- Build: `{build_sys.get('inferred_build_cmd') or '—'}`",
+            f"- Lint: `{build_sys.get('inferred_lint_cmd') or '—'}`",
+            "",
+        ]
+
+    test_layout = report.get("test_layout") or {}
+    if test_layout:
+        lines += [
+            "## Test Layout",
+            f"- Test dirs: {', '.join(f'`{d}`' for d in (test_layout.get('test_dirs') or [])) or '—'}",
+            f"- Test files: {test_layout.get('test_files_count', 0)}",
+            f"- Coverage note: {test_layout.get('coverage_note', '—')}",
+            "",
+        ]
+
+    risk_areas = report.get("risk_areas") or []
+    if risk_areas:
+        lines += ["## Risk Areas"]
+        for r in risk_areas[:10]:
+            area = r.get("area", "")
+            reason = r.get("reason", "")
+            files = ", ".join(f'`{f}`' for f in (r.get("files") or [])[:5])
+            lines.append(f"- **{area}**: {reason}" + (f" ({files})" if files else ""))
+        lines.append("")
+
+    integration_points = report.get("integration_points") or []
+    if integration_points:
+        lines += ["## Integration Points"]
+        for ip in integration_points[:10]:
+            name = ip.get("name", "")
+            kind = ip.get("kind", "")
+            files = ", ".join(f'`{f}`' for f in (ip.get("files") or [])[:3])
+            lines.append(f"- **{name}** ({kind})" + (f": {files}" if files else ""))
+        lines.append("")
+
+    lines.append("_Machine-readable data: `analyst_report.json` in this folder._")
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 # ── Phase 1: Architect ───────────────────────────────────────────────
+
+
+def _load_analyst_summary(workspace: Path) -> Optional[str]:
+    """
+    Load the analyst report from disk and return a compact summary string
+    suitable for injection into architect/reviewer prompts.
+    Returns None if no report exists or it cannot be read.
+    """
+    import json as _json
+    report_path = workspace / _ANALYST_REPORT_JSON
+    if not report_path.exists():
+        return None
+    try:
+        report = _json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(report, dict):
+        return None
+    parts: list[str] = []
+    summary = report.get("summary", "")
+    if summary:
+        parts.append(f"Summary: {summary}")
+    risk_areas = report.get("risk_areas") or []
+    if risk_areas:
+        risks = "; ".join(
+            f"{r.get('area', '')}: {r.get('reason', '')}" for r in risk_areas[:5]
+        )
+        parts.append(f"Risk areas: {risks}")
+    integration_points = report.get("integration_points") or []
+    if integration_points:
+        ips = "; ".join(
+            f"{ip.get('name', '')} ({ip.get('kind', '')})" for ip in integration_points[:5]
+        )
+        parts.append(f"Integration points: {ips}")
+    build_sys = report.get("build_system") or {}
+    if build_sys.get("detected"):
+        parts.append(f"Build system: {build_sys['detected']}")
+    return "\n".join(parts) if parts else None
 
 
 def architect_phase(
@@ -267,6 +487,8 @@ def architect_phase(
     cfg = get_settings().models["planner"]
     model_key = mm.ensure_loaded("planner")
     client = _get_client()
+    workspace = queue.workspace_for_plan(plan_id)
+    analyst_summary = _load_analyst_summary(workspace)
 
     preflight = preflight_plan_context(plan_text, cfg.context_length, cfg.max_completion)
     queue.set_plan_preflight(plan_id, {k: v for k, v in preflight.items() if k != "chunks"})
@@ -286,7 +508,7 @@ def architect_phase(
                 all_tasks.extend(row["tasks"])
                 continue
 
-            messages = build_architect_messages(chunk)
+            messages = build_architect_messages(chunk, analyst_summary=analyst_summary)
             try:
                 max_out = _architect_max_tokens(cfg, messages)
             except ValueError:
@@ -295,7 +517,7 @@ def architect_phase(
                     client, model_key, summary_messages, max_tokens=1024, temperature=0.2
                 )
                 summary = summary_response.choices[0].message.content or chunk[:4000]
-                messages = build_architect_messages(summary)
+                messages = build_architect_messages(summary, analyst_summary=analyst_summary)
                 max_out = _architect_max_tokens(cfg, messages)
 
             response = _llm_call(
@@ -305,13 +527,14 @@ def architect_phase(
             content = choice.message.content or ""
             finish_reason = getattr(choice, "finish_reason", None)
             usage = response.usage
+            chunk_duration = time.time() - start
             queue.log_run(
                 task_id=None,
                 phase="architect",
                 model_key=model_key,
                 prompt_tokens=usage.prompt_tokens if usage else 0,
                 completion_tokens=usage.completion_tokens if usage else 0,
-                duration_seconds=0.0,
+                duration_seconds=chunk_duration,
                 success=True,
             )
             try:
@@ -790,7 +1013,9 @@ def reviewer_phase(
         if not content.startswith("ERROR"):
             code_to_review += f"\n\n### Actual file: {path}\n```\n{content}\n```"
 
-    messages = build_reviewer_messages(task, code_to_review)
+    ws_for_analyst = queue.workspace_for_plan(task.plan_id)
+    analyst_context = _load_analyst_summary(ws_for_analyst)
+    messages = build_reviewer_messages(task, code_to_review, analyst_context=analyst_context)
     start = time.time()
 
     log.info(f"[Reviewer] Reviewing task #{task.id}: {task.title}")

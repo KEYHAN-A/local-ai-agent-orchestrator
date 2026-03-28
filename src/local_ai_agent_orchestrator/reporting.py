@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from local_ai_agent_orchestrator.report_schema import build_report_meta
@@ -46,6 +48,10 @@ def _write_lao_quality_markdown(workspace: Path, payload: dict) -> Path:
             "(unload of another LLM, then load; see `ModelManager`)",
             f"- **LM Studio loads / unloads** — {eff.get('load_count', 0)} / {eff.get('unload_count', 0)}",
         ]
+    analyst_present = eff.get("analyst_report_present", False)
+    lines += [
+        f"- **Analyst report** — {'present (`analyst_report.json` / `ANALYST.md`)' if analyst_present else 'not generated (analyst_enabled: false or phase skipped)'}",
+    ]
     lines += [
         "",
         "## Inferred validation commands",
@@ -235,10 +241,26 @@ def write_quality_report(
         "efficiency": {
             **queue.get_efficiency_metrics(),
             **(model_metrics or {}),
+            "analyst_report_present": (ws / "analyst_report.json").exists(),
         },
         "traceability": traceability,
     }
     out = ws / "quality_report.json"
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _atomic_json_write(out, payload)
     _write_lao_quality_markdown(ws, payload)
     return out
+
+
+def _atomic_json_write(path: Path, payload: object) -> None:
+    """Write JSON atomically: temp file in same dir then os.replace."""
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise

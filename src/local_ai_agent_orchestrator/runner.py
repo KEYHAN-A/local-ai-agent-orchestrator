@@ -21,6 +21,7 @@ from local_ai_agent_orchestrator.interrupts import (
 )
 from local_ai_agent_orchestrator.model_manager import ModelManager
 from local_ai_agent_orchestrator.phases import (
+    analyst_phase,
     architect_phase,
     coder_phase,
     preflight_plan_context,
@@ -80,6 +81,11 @@ def run_factory(
                     plan_text,
                     plan_id,
                 )
+                if s.analyst_enabled:
+                    apply_runner_context(
+                        phase="Analyst", plan=plan_file.name, task="Surveying workspace"
+                    )
+                    analyst_phase(mm, queue, plan_id, plan_text, ws)
                 architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
             except Exception as e:
                 log.error(f"Architect phase failed for {plan_file.name}: {e}")
@@ -605,11 +611,6 @@ def run_entry(
             log.info(f"Loaded plan: {plan_file.name}")
             tasks = queue.get_plan_tasks(plan_id)
             if not tasks:
-                apply_runner_context(
-                    phase="Architect",
-                    plan=plan_file.name,
-                    task="Decomposing plan",
-                )
                 ws = queue.workspace_for_plan(plan_id)
                 plan_git.snapshot_and_commit_plan(
                     ws,
@@ -617,6 +618,16 @@ def run_entry(
                     plan_file.name,
                     plan_text,
                     plan_id,
+                )
+                if s.analyst_enabled:
+                    apply_runner_context(
+                        phase="Analyst", plan=plan_file.name, task="Surveying workspace"
+                    )
+                    analyst_phase(mm, queue, plan_id, plan_text, ws)
+                apply_runner_context(
+                    phase="Architect",
+                    plan=plan_file.name,
+                    task="Decomposing plan",
                 )
                 architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
 

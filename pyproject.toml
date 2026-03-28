@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-ai-agent-orchestrator"
-version = "3.0.10"
+version = "3.0.11"
 description = "LAO — interactive Pilot Mode (local agentic chat + tools) plus planner→coder→reviewer orchestration over LM Studio / OpenAI-compatible APIs, with SQLite state, project registry, and optional per-plan Git."
 readme = "README.md"
 license = "GPL-3.0-only"

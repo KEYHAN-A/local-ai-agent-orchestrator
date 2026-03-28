@@ -70,6 +70,14 @@ def _default_models() -> dict[str, ModelConfig]:
             size_bytes=21_513_639_040,
             description="Interactive pilot / command agent",
         ),
+        "analyst": ModelConfig(
+            key="qwen2.5-7b-instruct",
+            context_length=65536,
+            max_completion=8192,
+            supports_tools=False,
+            size_bytes=4_500_000_000,
+            description="Read-only project analyst (large context, small weights)",
+        ),
     }
 
 
@@ -141,6 +149,7 @@ class Settings:
     architect_only: bool = False
     pilot_mode_enabled: bool = True
     pilot_context_lines: int = 50
+    analyst_enabled: bool = True
 
     memory_release_fraction: float = 0.75
     swap_growth_limit_mb: float = 512.0
@@ -222,6 +231,7 @@ def init_settings(
             "reviewer": "reviewer",
             "embedder": "embedder",
             "pilot": "pilot",
+            "analyst": "analyst",
         }
         for cli_name, role in role_map.items():
             new_key = model_key_overrides.get(cli_name)
@@ -352,6 +362,7 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
             ),
             pilot_mode_enabled=bool(orch.get("pilot_mode_enabled", base.pilot_mode_enabled)),
             pilot_context_lines=int(orch.get("pilot_context_lines", base.pilot_context_lines)),
+            analyst_enabled=bool(orch.get("analyst_enabled", base.analyst_enabled)),
         )
         if isinstance(orch.get("validation_profiles"), dict):
             profiles = {

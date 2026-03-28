@@ -11,7 +11,10 @@ def run_consistency_checks(workspace: Path) -> list[dict]:
     rel_set = {str(p.relative_to(workspace)) for p in files}
     for p in files[:300]:
         rel = str(p.relative_to(workspace))
-        text = p.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
         for m in re.findall(r'["\']([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)["\']', text):
             if "/" in m and m not in rel_set:
                 findings.append(

@@ -64,7 +64,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             (cwd / ".lao").mkdir(parents=True, exist_ok=True)
             (cwd / "plans").mkdir(parents=True, exist_ok=True)
 
-            answers = iter(["planner-old", "coder-old", "reviewer-new", "embed-old", "planner-old"])
+            answers = iter(["planner-old", "coder-old", "reviewer-new", "embed-old", "planner-old", "analyst-old"])
             with (
                 patch("local_ai_agent_orchestrator.model_manager.ModelManager", _FakeMM),
                 patch("local_ai_agent_orchestrator.cli.ui.ask_text", side_effect=lambda *_a, **_k: next(answers)),
@@ -128,7 +128,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["-v"])
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("lao 3.0.10", out.getvalue())
+        self.assertIn("lao 3.0.11", out.getvalue())
 
     def test_main_version_flag_long(self):
         out = io.StringIO()
@@ -136,7 +136,7 @@ class TestCliInteractiveHelpers(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["--version"])
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("lao 3.0.10", out.getvalue())
+        self.assertIn("lao 3.0.11", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from statistics import median
 
@@ -36,7 +38,11 @@ def build_kpi_snapshot(queue: TaskQueue) -> dict:
                     cross_file_leakage += 1
 
     strict = bool(get_settings().strict_adherence)
-    allowed = set(get_settings().strict_closure_allowed_statuses or ["validated"])
+    allowed = {
+        str(x).strip().lower()
+        for x in (get_settings().strict_closure_allowed_statuses or ["validated"])
+        if str(x).strip()
+    } or {"validated"}
     successful_plans = sum(
         1
         for p in plans
@@ -80,6 +86,16 @@ def build_kpi_snapshot(queue: TaskQueue) -> dict:
 
 def write_kpi_snapshot(workspace: Path, payload: dict) -> Path:
     out = workspace / "kpi_snapshot.json"
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=workspace, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        os.replace(tmp_path, out)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return out
 

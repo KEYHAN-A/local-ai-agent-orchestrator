@@ -4,6 +4,34 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 
 ## Unreleased
 
+## v3.0.11 — Analyst agent, P0 bug fixes, cross-platform memory gate, resilience
+
+### Analyst agent (Phase 0)
+- **New `analyst_phase()`** in `phases.py`: read-only workspace survey using a small model with a large context window. Runs before the architect and writes `analyst_report.json` + `ANALYST.md` to the plan workspace. Idempotent — reuses existing report on resume.
+- **`analyst.py`**: tiered input builder assembles directory tree → manifests → import summary → source excerpts → plan-referenced files within the model's token budget (`context_length * max_context_utilization - max_completion`).
+- **Analyst context injected** into architect and reviewer prompts (summary, risk areas, integration points, build system).
+- **`analyst` model role** added to `settings.py`, `factory.example.yaml`, `configure-models` interactive flow.
+- **`--analyst-model`** and **`--no-analyst`** CLI flags; **`orchestration.analyst_enabled`** YAML setting (default `true`).
+- **Quality report** (`quality_report.json` / `LAO_QUALITY.md`) now records whether an analyst report was generated.
+
+### P0 bug fixes
+- **`model_manager.py`**: read `page_size` from the `vm_stat` header line instead of hardcoding 16 384 — fixes incorrect memory gate calculations on non-M-series Macs.
+- **`phases.py`**: architect `log_run` now records the real `chunk_duration` instead of `0.0`.
+- **`state.py`**: removed dead `'rework'` status from `has_pending_work` query (status was renamed; caused false "work pending" signals).
+- **`kpi.py`**: normalize `strict_closure_allowed_statuses` (lowercase + strip) consistently with `reporting.py`.
+
+### P1 resilience
+- **`history.py`**: atomic JSON writes (temp file + `os.replace`); corrupt or non-list files are backed up as `.bak` with a warning log instead of silently discarded.
+- **`consistency.py`**: `OSError` guard on `read_text` so unreadable files are skipped rather than crashing the check.
+- **`tools.py`**: `file_patch` uses `errors="replace"` encoding to handle non-UTF-8 files gracefully.
+- **`reporting.py`**, **`kpi.py`**, **`dashboards.py`**: all JSON snapshot writes are now atomic.
+
+### P2 cross-platform
+- **`model_manager.py`**: Linux `/proc/meminfo` (`MemAvailable`) fallback for `_get_available_memory_bytes` and `_get_swap_used_bytes`. Other platforms fail open (gate skipped with a debug log).
+
+### Documentation
+- **`docs/ARCHITECTURE.md`**: fully rewritten — all modules listed in categorised tables, Phase 0 (analyst) documented in execution flow, contributor guides for adding new phases and workspace tools.
+
 ## v3.0.10 — Model swap observability and throughput docs
 
 - **Observability:** TTY **LAO run finished** report and plain **`lao run`** factory status now separate **run-log model_key changes** (SQLite `run_log`) from **LM Studio swap cycles**, **loads**, and **unloads** (`ModelManager` metrics).

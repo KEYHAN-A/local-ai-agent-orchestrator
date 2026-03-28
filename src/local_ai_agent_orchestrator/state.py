@@ -680,7 +680,7 @@ class TaskQueue:
 
     def has_pending_work(self) -> bool:
         row = self._conn.execute(
-            "SELECT COUNT(*) as c FROM micro_tasks WHERE status IN ('pending', 'coded', 'rework')"
+            "SELECT COUNT(*) as c FROM micro_tasks WHERE status IN ('pending', 'coded')"
         ).fetchone()
         return row["c"] > 0
 

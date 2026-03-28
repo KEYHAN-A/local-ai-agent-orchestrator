@@ -288,22 +288,39 @@ class ModelManager:
 
     def _get_available_memory_bytes(self) -> int:
         """
-        Return an estimate of physically available RAM using vm_stat.
+        Return an estimate of physically available RAM.
 
-        macOS Unified Memory does not have a single 'free' counter -- memory
-        is held as 'inactive' (reclaimable) and 'purgeable' (discardable) in
-        addition to truly free pages. The sum of all three is what the kernel
-        can hand to a new allocation without touching swap.
-
-        Page size on Apple Silicon M4 is 16 384 bytes (confirmed via sysctl).
+        macOS: uses vm_stat (free + inactive + purgeable pages).
+        Linux: reads /proc/meminfo (MemAvailable).
+        Other platforms: fail open (return 2^63) so the factory is never blocked.
         """
+        import platform
+        system = platform.system()
+
+        if system == "Darwin":
+            return self._get_available_memory_bytes_macos()
+        if system == "Linux":
+            return self._get_available_memory_bytes_linux()
+
+        log.debug("[MemoryGate] Unsupported platform %s -- skipping memory check", system)
+        return 2 ** 63
+
+    def _get_available_memory_bytes_macos(self) -> int:
+        """macOS: vm_stat (free + inactive + purgeable pages)."""
         try:
             out = subprocess.check_output(["vm_stat"], timeout=5).decode()
         except Exception as e:
             log.warning(f"[MemoryGate] vm_stat failed: {e} -- skipping memory check")
-            return 2 ** 63  # Fail open so the factory is not blocked indefinitely
+            return 2 ** 63
 
-        page_size = 16_384  # M-series Macs use 16 KB pages
+        # Read page size from the vm_stat header line:
+        #   "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
+        # Falls back to 16 384 (Apple Silicon) if the header is absent or unparseable.
+        page_size = 16_384
+        header_match = re.search(r"page size of (\d+) bytes", out)
+        if header_match:
+            page_size = int(header_match.group(1))
+
         fields: dict[str, int] = {}
         for line in out.splitlines():
             m = re.match(r"^(.+?):\s+([\d]+)", line)
@@ -315,20 +332,63 @@ class ModelManager:
         purgeable = fields.get("Pages purgeable", 0) * page_size
         return free + inactive + purgeable
 
+    def _get_available_memory_bytes_linux(self) -> int:
+        """Linux: /proc/meminfo MemAvailable (kernel 3.14+)."""
+        try:
+            text = open("/proc/meminfo", encoding="utf-8").read()
+            m = re.search(r"^MemAvailable:\s+(\d+)\s+kB", text, re.MULTILINE)
+            if m:
+                return int(m.group(1)) * 1024
+            # Fallback: MemFree + Buffers + Cached
+            fields: dict[str, int] = {}
+            for line in text.splitlines():
+                parts = line.split(":")
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val_str = parts[1].strip().split()[0]
+                    try:
+                        fields[key] = int(val_str) * 1024
+                    except ValueError:
+                        pass
+            return (
+                fields.get("MemFree", 0)
+                + fields.get("Buffers", 0)
+                + fields.get("Cached", 0)
+            )
+        except Exception as e:
+            log.warning(f"[MemoryGate] /proc/meminfo read failed: {e} -- skipping memory check")
+            return 2 ** 63
+
     def _get_swap_used_bytes(self) -> int:
         """
-        Return current swap used in bytes via sysctl vm.swapusage.
-        Returns 0 on any error so a failing sysctl never blocks the factory.
+        Return current swap used in bytes.
+        macOS: sysctl vm.swapusage.
+        Linux: /proc/meminfo SwapTotal - SwapFree.
+        Returns 0 on any error so a failing probe never blocks the factory.
         """
-        try:
-            out = subprocess.check_output(
-                ["sysctl", "vm.swapusage"], timeout=5
-            ).decode()
-            m = re.search(r"used\s*=\s*([\d.]+)M", out)
-            if m:
-                return int(float(m.group(1)) * 1024 * 1024)
-        except Exception as e:
-            log.warning(f"[MemoryGate] sysctl vm.swapusage failed: {e}")
+        import platform
+        system = platform.system()
+        if system == "Darwin":
+            try:
+                out = subprocess.check_output(
+                    ["sysctl", "vm.swapusage"], timeout=5
+                ).decode()
+                m = re.search(r"used\s*=\s*([\d.]+)M", out)
+                if m:
+                    return int(float(m.group(1)) * 1024 * 1024)
+            except Exception as e:
+                log.warning(f"[MemoryGate] sysctl vm.swapusage failed: {e}")
+            return 0
+        if system == "Linux":
+            try:
+                text = open("/proc/meminfo", encoding="utf-8").read()
+                total_m = re.search(r"^SwapTotal:\s+(\d+)\s+kB", text, re.MULTILINE)
+                free_m = re.search(r"^SwapFree:\s+(\d+)\s+kB", text, re.MULTILINE)
+                if total_m and free_m:
+                    return (int(total_m.group(1)) - int(free_m.group(1))) * 1024
+            except Exception as e:
+                log.warning(f"[MemoryGate] /proc/meminfo swap read failed: {e}")
+            return 0
         return 0
 
     def _wait_for_memory(self, freed_bytes: int, pre_unload_available: int):

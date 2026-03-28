@@ -68,6 +68,8 @@ orchestration:
   no_progress_repeat_limit: 2
   benchmark_min_pass_rate: 0.85
   benchmark_fail_on_regression: true
+  # Set to false (or use --no-analyst) to skip the analyst phase entirely.
+  analyst_enabled: true
 git:
   enabled: true
   plan_file_name: LAO_PLAN.md
@@ -101,3 +103,13 @@ models:
     supports_tools: false
     size_bytes: 84106624
     description: Embeddings for semantic search
+  analyst:
+    # Small model with large context for read-only project analysis.
+    # Pick a model that leaves ~28 GB free after load so context can be large.
+    # Disable with: orchestration.analyst_enabled: false  or  lao run --no-analyst
+    key: qwen2.5-7b-instruct
+    context_length: 65536
+    max_completion: 8192
+    supports_tools: false
+    size_bytes: 4500000000
+    description: Read-only project analyst (large context, small weights)

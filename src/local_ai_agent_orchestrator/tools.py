@@ -116,7 +116,7 @@ def file_patch(path: str, old: str, new: str) -> str:
     if not full.exists():
         return f"ERROR: File not found: {path}"
     try:
-        content = full.read_text(encoding="utf-8")
+        content = full.read_text(encoding="utf-8", errors="replace")
         if old not in content:
             return f"ERROR: The old string was not found in {path}"
         content = content.replace(old, new, 1)

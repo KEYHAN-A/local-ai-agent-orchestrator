@@ -132,6 +132,27 @@ def _reviewer_rubric_extras(title: str, description: str) -> str:
     return f"\n## Task-specific review hints\n{body}\n"
 
 
+ANALYST_SYSTEM = """You are a read-only project analyst. Your job is to survey the workspace and produce a structured JSON report that helps the architect and reviewer understand the project.
+
+Rules:
+- Do NOT generate, modify, or suggest code.
+- Do NOT make task decisions or architectural recommendations.
+- Report only what you observe: file layout, dependencies, build system, test coverage, integration points, and risk areas.
+- Be concise. Prefer bullet lists and short phrases over prose.
+- Output ONLY a single valid JSON object matching the schema below. No markdown fences, no commentary.
+
+JSON schema:
+{
+  "file_inventory": [{"path": "string", "kind": "source|test|config|asset|other", "note": "string"}],
+  "dependency_graph": [{"from": "string", "to": "string", "kind": "import|package|config"}],
+  "build_system": {"detected": "string", "manifest_files": ["string"], "inferred_build_cmd": "string", "inferred_lint_cmd": "string"},
+  "test_layout": {"test_dirs": ["string"], "test_files_count": 0, "coverage_note": "string"},
+  "integration_points": [{"name": "string", "kind": "api|db|service|cli|ui", "files": ["string"]}],
+  "risk_areas": [{"area": "string", "reason": "string", "files": ["string"]}],
+  "summary": "string"
+}"""
+
+
 PILOT_SYSTEM = """You are the LAO Pilot — an interactive command agent for a local AI coding orchestrator.
 
 You have direct access to the project workspace and can execute tools on the user's behalf.
@@ -163,11 +184,20 @@ Guidelines:
 # ── Message Builders ─────────────────────────────────────────────────
 
 
-def build_architect_messages(plan_text: str) -> list[dict]:
+def build_architect_messages(
+    plan_text: str,
+    analyst_summary: str | None = None,
+) -> list[dict]:
     """Build messages for the architect phase (plan decomposition)."""
+    user_content = f"Decompose this project plan into micro-tasks:\n\n{plan_text}"
+    if analyst_summary:
+        user_content = (
+            f"## Analyst Project Survey\n{analyst_summary}\n\n"
+            f"---\n\n{user_content}"
+        )
     return [
         {"role": "system", "content": ARCHITECT_SYSTEM},
-        {"role": "user", "content": f"Decompose this project plan into micro-tasks:\n\n{plan_text}"},
+        {"role": "user", "content": user_content},
     ]
 
 
@@ -220,6 +250,7 @@ def build_coder_messages(
 def build_reviewer_messages(
     task: MicroTask,
     code_output: str,
+    analyst_context: str | None = None,
 ) -> list[dict]:
     """Build messages for the reviewer phase."""
     rubric = _reviewer_rubric_extras(task.title, task.description)
@@ -227,10 +258,20 @@ def build_reviewer_messages(
         f"## Task Specification: {task.title}\n\n{task.description}{rubric}\n"
         f"## Code to Review:\n\n{code_output}"
     )
+    if analyst_context:
+        content = f"## Project Context (from analyst)\n{analyst_context}\n\n---\n\n{content}"
 
     return [
         {"role": "system", "content": REVIEWER_SYSTEM},
         {"role": "user", "content": content},
+    ]
+
+
+def build_analyst_messages(analyst_input: str) -> list[dict]:
+    """Build messages for the analyst phase (read-only project survey)."""
+    return [
+        {"role": "system", "content": ANALYST_SYSTEM},
+        {"role": "user", "content": f"Survey this workspace and produce the JSON report:\n\n{analyst_input}"},
     ]
 
 
