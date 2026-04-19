@@ -155,6 +155,37 @@ CREATE TABLE IF NOT EXISTS pilot_conversations (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS task_todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES micro_tasks(id),
+    todo_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS memory_facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL,
+    fact TEXT NOT NULL,
+    fact_signature TEXT NOT NULL,
+    source TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(scope, fact_signature)
+);
+
+CREATE TABLE IF NOT EXISTS tool_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER,
+    phase TEXT,
+    tool_name TEXT NOT NULL,
+    args_json TEXT,
+    granted INTEGER NOT NULL,
+    reason TEXT,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON micro_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_plan ON micro_tasks(plan_id);
 CREATE INDEX IF NOT EXISTS idx_runlog_task ON run_log(task_id);
@@ -164,6 +195,9 @@ CREATE INDEX IF NOT EXISTS idx_plan_phases_plan ON plan_phases(plan_id);
 CREATE INDEX IF NOT EXISTS idx_deliverables_plan ON plan_deliverables(plan_id);
 CREATE INDEX IF NOT EXISTS idx_task_validation_runs_task ON task_validation_runs(task_id);
 CREATE INDEX IF NOT EXISTS idx_pilot_session ON pilot_conversations(session_id);
+CREATE INDEX IF NOT EXISTS idx_task_todos_task ON task_todos(task_id);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_scope ON memory_facts(scope);
+CREATE INDEX IF NOT EXISTS idx_tool_audit_task ON tool_audit(task_id);
 """
 
 
@@ -965,6 +999,126 @@ class TaskQueue:
     def start_new_pilot_session(self) -> str:
         self._pilot_session_id = None
         return self._ensure_pilot_session()
+
+    # ── Per-task TODO ledger ─────────────────────────────────────────
+
+    def set_task_todos(self, task_id: int, items: list[dict]) -> None:
+        """Replace the TODO ledger for a task atomically."""
+        self._conn.execute("BEGIN")
+        try:
+            self._conn.execute("DELETE FROM task_todos WHERE task_id = ?", (task_id,))
+            for it in items:
+                self._conn.execute(
+                    """INSERT INTO task_todos (task_id, todo_id, content, status)
+                       VALUES (?, ?, ?, ?)""",
+                    (
+                        task_id,
+                        str(it.get("id") or "").strip() or "todo",
+                        str(it.get("content") or "").strip(),
+                        str(it.get("status") or "pending").strip().lower(),
+                    ),
+                )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
+    def get_task_todos(self, task_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT todo_id, content, status, updated_at FROM task_todos
+               WHERE task_id = ? ORDER BY id ASC""",
+            (task_id,),
+        ).fetchall()
+        return [
+            {"id": r["todo_id"], "content": r["content"], "status": r["status"], "updated_at": r["updated_at"]}
+            for r in rows
+        ]
+
+    def clear_task_todos(self, task_id: int) -> None:
+        self._conn.execute("DELETE FROM task_todos WHERE task_id = ?", (task_id,))
+
+    # ── Memory facts ─────────────────────────────────────────────────
+
+    def add_memory_fact(self, scope: str, fact: str, source: str | None = None) -> bool:
+        """Append a fact to project/user memory; returns True if newly inserted."""
+        normalized = " ".join((fact or "").strip().lower().split())
+        if not normalized:
+            return False
+        sig = hashlib.sha256(f"{scope}::{normalized}".encode("utf-8")).hexdigest()[:16]
+        try:
+            self._conn.execute(
+                """INSERT INTO memory_facts (scope, fact, fact_signature, source)
+                   VALUES (?, ?, ?, ?)""",
+                (scope, fact.strip(), sig, source),
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def list_memory_facts(self, scope: str | None = None, limit: int = 200) -> list[dict]:
+        if scope:
+            rows = self._conn.execute(
+                """SELECT scope, fact, source, created_at FROM memory_facts
+                   WHERE scope = ? ORDER BY id DESC LIMIT ?""",
+                (scope, int(limit)),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                """SELECT scope, fact, source, created_at FROM memory_facts
+                   ORDER BY id DESC LIMIT ?""",
+                (int(limit),),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def forget_memory_fact(self, fact_signature: str) -> int:
+        cur = self._conn.execute(
+            "DELETE FROM memory_facts WHERE fact_signature = ?",
+            (fact_signature,),
+        )
+        return int(cur.rowcount or 0)
+
+    # ── Tool audit log ───────────────────────────────────────────────
+
+    def log_tool_audit(
+        self,
+        *,
+        task_id: int | None,
+        phase: str | None,
+        tool_name: str,
+        args_json: str | None,
+        granted: bool,
+        reason: str | None,
+        duration_ms: int | None = None,
+    ) -> None:
+        self._conn.execute(
+            """INSERT INTO tool_audit
+               (task_id, phase, tool_name, args_json, granted, reason, duration_ms)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                task_id,
+                phase,
+                tool_name,
+                args_json,
+                int(bool(granted)),
+                reason,
+                duration_ms,
+            ),
+        )
+
+    def get_tool_audit(self, *, task_id: int | None = None, limit: int = 200) -> list[dict]:
+        if task_id is not None:
+            rows = self._conn.execute(
+                """SELECT task_id, phase, tool_name, args_json, granted, reason, duration_ms, created_at
+                   FROM tool_audit WHERE task_id = ? ORDER BY id DESC LIMIT ?""",
+                (task_id, int(limit)),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                """SELECT task_id, phase, tool_name, args_json, granted, reason, duration_ms, created_at
+                   FROM tool_audit ORDER BY id DESC LIMIT ?""",
+                (int(limit),),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ── Helpers ──────────────────────────────────────────────────────
 

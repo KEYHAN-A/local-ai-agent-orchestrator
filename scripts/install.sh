@@ -4,7 +4,7 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/KEYHAN-A/local-ai-agent-orchestrator/main/scripts/install.sh | bash
 # Optional:
-#   LAO_VERSION=3.0.12  pin a release (passed to pip/pipx as ==version)
+#   LAO_VERSION=3.1.0  pin a release (passed to pip/pipx as ==version)
 #   LAO_PACKAGE=name   override PyPI package name (default: local-ai-agent-orchestrator)
 
 set -euo pipefail

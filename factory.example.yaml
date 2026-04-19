@@ -113,3 +113,55 @@ models:
     supports_tools: false
     size_bytes: 4500000000
     description: Read-only project analyst (large context, small weights)
+
+# ── Reliability & Quality additions (all optional) ──────────────────────
+
+# Tool permission system. Modes: auto | confirm | plan_only | bypass.
+# Wildcard rules use Claude-Code syntax: Bash(<glob>), FileWrite(<glob>), …
+permissions:
+  mode: auto
+  allow: []
+  deny:
+    # - Bash(rm -rf *)
+    # - FileWrite(*/secrets/*)
+
+# Skills (named, reusable workflows). Bundled skills always loaded;
+# user skills are picked up from any directory listed here plus
+# ./.lao/skills (per-project default).
+skills_enabled: true
+skills_dirs: []
+
+# Hierarchical memory injected as a system-prompt prelude.
+memory_enabled: true
+memory_project_filename: LAO_MEMORY.md
+# memory_user_path: ~/.lao/MEMORY.md   # default
+
+# Conversation compaction: replace the legacy `last 16` trim with a
+# system-preserving compactor that summarizes the dropped middle.
+compaction_enabled: true
+compaction_keep_recent: 8
+
+# Mechanical verifier between coder and reviewer (file existence, AST/JSON
+# parse, TODO ledger). Disable to revert to the original pipeline.
+verifier_enabled: true
+
+# Reply shape across phases. terse | narrative | json
+output_style: narrative
+
+# External MCP servers — discovered tools register as mcp__<server>__<tool>.
+mcp_servers: []
+  # - name: filesystem
+  #   command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+# Optional speculative coder retries inside isolated git worktrees.
+# git: { worktrees: false }
+
+# Hooks: pre_tool / post_tool / pre_phase / post_phase.
+# hooks:
+#   path: ./.lao/hooks.py
+
+# Optional OpenTelemetry exporter.
+# otel:
+#   enabled: false
+#   endpoint: http://localhost:4318/v1/traces
+#   service_name: lao

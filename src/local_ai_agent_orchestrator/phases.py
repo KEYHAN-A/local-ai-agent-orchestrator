@@ -46,12 +46,17 @@ from local_ai_agent_orchestrator.repair import build_repair_feedback, compute_co
 from local_ai_agent_orchestrator.repair import is_no_progress_repeat
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import MicroTask, TaskQueue
+from local_ai_agent_orchestrator import hooks_registry as _hooks
+from local_ai_agent_orchestrator import permissions as _permissions
+from local_ai_agent_orchestrator.services.compact import compact_messages
 from local_ai_agent_orchestrator.tools import (
     TOOL_DISPATCH,
     TOOL_SCHEMAS,
     file_read,
     find_relevant_files,
 )
+from local_ai_agent_orchestrator.tools import base as _tool_base
+from local_ai_agent_orchestrator.tools import todos as _tool_todos
 from local_ai_agent_orchestrator.validators import (
     extract_written_files,
     validate_files,
@@ -217,6 +222,18 @@ def _get_client() -> OpenAI:
     return OpenAI(base_url=s.openai_base_url, api_key=s.openai_api_key)
 
 
+def _resolve_role_for_model(model_key: str) -> Optional[str]:
+    """Reverse-lookup the role name from a model key (used for determinism knobs)."""
+    try:
+        models = get_settings().models
+    except RuntimeError:
+        return None
+    for role, cfg in models.items():
+        if cfg.key == model_key:
+            return role
+    return None
+
+
 def _llm_call(
     client: OpenAI,
     model_key: str,
@@ -224,11 +241,32 @@ def _llm_call(
     tools: Optional[list[dict]] = None,
     max_tokens: int = 4096,
     temperature: float = 0.2,
+    *,
+    role: Optional[str] = None,
+    json_schema: Optional[dict] = None,
+    response_format: Optional[dict] = None,
 ) -> dict:
     """
     Make an LLM call with retry logic. Returns the full API response dict.
     Handles transient HTTP 500 errors with exponential backoff.
+
+    Per-role determinism knobs (``temperature``, ``top_p``, ``seed``,
+    ``repetition_penalty``) declared in ``factory.yaml`` override the call-site
+    defaults. ``json_schema`` enables structured output for compliant backends
+    and is silently dropped on backends that reject it (the caller must always
+    provide a regex / parser fallback).
     """
+    role = role or _resolve_role_for_model(model_key)
+    cfg = None
+    try:
+        if role:
+            cfg = get_settings().models.get(role)
+    except RuntimeError:
+        cfg = None
+
+    if cfg is not None and cfg.temperature is not None:
+        temperature = float(cfg.temperature)
+
     kwargs = {
         "model": model_key,
         "messages": messages,
@@ -236,19 +274,44 @@ def _llm_call(
         "temperature": temperature,
         "timeout": get_settings().llm_request_timeout_s,
     }
+    if cfg is not None and cfg.top_p is not None:
+        kwargs["top_p"] = float(cfg.top_p)
+    if cfg is not None and cfg.seed is not None:
+        kwargs["seed"] = int(cfg.seed)
+    if cfg is not None and cfg.repetition_penalty is not None:
+        # OpenAI-compatible servers accept this via extra_body for many local backends.
+        kwargs.setdefault("extra_body", {})["repetition_penalty"] = float(cfg.repetition_penalty)
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
 
+    if response_format is not None:
+        kwargs["response_format"] = response_format
+    elif json_schema is not None and cfg is not None and cfg.supports_json_schema:
+        kwargs["response_format"] = {
+            "type": "json_schema",
+            "json_schema": json_schema,
+        }
+
     last_error = None
+    drop_response_format = False
     for attempt in range(get_settings().llm_retry_attempts):
         if should_shutdown():
             raise KeyboardInterrupt("Shutdown requested")
         try:
-            response = client.chat.completions.create(**kwargs)
+            call_kwargs = dict(kwargs)
+            if drop_response_format:
+                call_kwargs.pop("response_format", None)
+            response = client.chat.completions.create(**call_kwargs)
             return response
         except Exception as e:
             last_error = e
+            msg = str(e).lower()
+            if not drop_response_format and "response_format" in msg and "response_format" in kwargs:
+                # Backend rejected schema mode; retry without it (regex fallback).
+                drop_response_format = True
+                log.info("[LLM] backend rejected response_format; retrying without schema mode")
+                continue
             wait = get_settings().llm_retry_backoff_base_s * (2 ** attempt)
             log.warning(
                 f"[LLM] Attempt {attempt + 1}/{get_settings().llm_retry_attempts} failed: {e}. "
@@ -260,6 +323,57 @@ def _llm_call(
     raise RuntimeError(
         f"LLM call failed after {get_settings().llm_retry_attempts} attempts: {last_error}"
     )
+
+
+# JSON schemas used when supports_json_schema=True; consumers always keep their
+# free-text fallback parsers in case the backend cannot honor the format.
+
+ARCHITECT_JSON_SCHEMA = {
+    "name": "lao_architect_tasks",
+    "strict": False,
+    "schema": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "file_paths": {"type": "array", "items": {"type": "string"}},
+                "dependencies": {"type": "array", "items": {"type": "string"}},
+                "phase": {"type": "string"},
+                "deliverable_ids": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title", "description"],
+        },
+    },
+}
+
+REVIEWER_JSON_SCHEMA = {
+    "name": "lao_reviewer_verdict",
+    "strict": False,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "verdict": {"type": "string", "enum": ["approve", "rework", "reject"]},
+            "summary": {"type": "string"},
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "severity": {"type": "string"},
+                        "issue_class": {"type": "string"},
+                        "message": {"type": "string"},
+                        "file_path": {"type": "string"},
+                        "fix_hint": {"type": "string"},
+                    },
+                    "required": ["severity", "message"],
+                },
+            },
+        },
+        "required": ["verdict", "summary"],
+    },
+}
 
 
 # ── Phase 0: Analyst ─────────────────────────────────────────────────
@@ -323,6 +437,7 @@ def analyst_phase(
             messages,
             max_tokens=cfg.max_completion,
             temperature=0.1,
+            role="analyst",
         )
         content = response.choices[0].message.content or ""
         duration = time.time() - start
@@ -514,14 +629,17 @@ def architect_phase(
             except ValueError:
                 summary_messages = build_architect_summary_messages(chunk)
                 summary_response = _llm_call(
-                    client, model_key, summary_messages, max_tokens=1024, temperature=0.2
+                    client, model_key, summary_messages, max_tokens=1024, temperature=0.2,
+                    role="planner",
                 )
                 summary = summary_response.choices[0].message.content or chunk[:4000]
                 messages = build_architect_messages(summary, analyst_summary=analyst_summary)
                 max_out = _architect_max_tokens(cfg, messages)
 
             response = _llm_call(
-                client, model_key, messages, max_tokens=max_out, temperature=0.3
+                client, model_key, messages, max_tokens=max_out, temperature=0.3,
+                role="planner",
+                json_schema=ARCHITECT_JSON_SCHEMA,
             )
             choice = response.choices[0]
             content = choice.message.content or ""
@@ -705,39 +823,119 @@ def coder_phase(
 
     log.info(f"[Coder] Task #{task.id}: {task.title} (attempt {task.attempt + 1})")
 
+    _tool_todos.bind_queue(queue)
+    task_token = _tool_todos.push_active_task(task.id)
     try:
-        if cfg.supports_tools:
-            output = _coder_tool_loop(client, model_key, messages, cfg.max_completion)
-        else:
-            output = _coder_no_tools(client, model_key, messages, cfg.max_completion)
+        try:
+            if cfg.supports_tools:
+                output = _coder_tool_loop(
+                    client, model_key, messages, cfg.max_completion,
+                    queue=queue, task_id=task.id,
+                )
+            else:
+                output = _coder_no_tools(client, model_key, messages, cfg.max_completion)
 
-        duration = time.time() - start
+            duration = time.time() - start
 
-        # Compute code signature for progress detection
-        workspace = queue.workspace_for_plan(task.plan_id)
-        code_sig = compute_code_signature(task.file_paths or [], str(workspace))
-        queue.mark_coded(task.id, output, code_signature=code_sig)
-        queue.log_run(
-            task_id=task.id, phase="coder", model_key=model_key,
-            duration_seconds=duration, success=True,
-        )
+            workspace = queue.workspace_for_plan(task.plan_id)
+            code_sig = compute_code_signature(task.file_paths or [], str(workspace))
+            queue.mark_coded(task.id, output, code_signature=code_sig)
+            queue.log_run(
+                task_id=task.id, phase="coder", model_key=model_key,
+                duration_seconds=duration, success=True,
+            )
 
-        log.info(f"[Coder] Completed task #{task.id} in {duration:.1f}s")
-        plan_git.commit_after_coder(
-            queue.workspace_for_plan(task.plan_id),
-            task.plan_id,
-            task.id,
-            task.title,
-        )
-        return output
+            log.info(f"[Coder] Completed task #{task.id} in {duration:.1f}s")
+            plan_git.commit_after_coder(
+                queue.workspace_for_plan(task.plan_id),
+                task.plan_id,
+                task.id,
+                task.title,
+            )
+            return output
 
+        except Exception as e:
+            duration = time.time() - start
+            queue.log_run(
+                task_id=task.id, phase="coder", model_key=model_key,
+                duration_seconds=duration, success=False, error=str(e),
+            )
+            raise
+    finally:
+        _tool_todos.reset_active_task(task_token)
+
+
+def _dispatch_tool_call(
+    fn_name: str,
+    fn_args: dict,
+    *,
+    queue: Optional[TaskQueue] = None,
+    task_id: Optional[int] = None,
+    phase: str = "coder",
+) -> str:
+    """Dispatch a single tool call through validation + permissions + audit."""
+    tool = _tool_base.get(fn_name)
+    if tool is None:
+        return f"ERROR: Unknown tool '{fn_name}'"
+    try:
+        validated = tool.validate(fn_args)
+    except ValueError as ve:
+        return f"ERROR: {ve}"
+    decision = _permissions.evaluate(tool, validated)
+    if not decision.granted:
+        if queue is not None:
+            try:
+                queue.log_tool_audit(
+                    task_id=task_id,
+                    phase=phase,
+                    tool_name=fn_name,
+                    args_json=_tool_base.safe_json_dumps(validated),
+                    granted=False,
+                    reason=decision.reason,
+                )
+            except Exception:
+                pass
+        prompt = decision.prompt or "Permission denied."
+        return f"ERROR: {prompt} (reason={decision.reason})"
+    started = time.time()
+    try:
+        _hooks.pre_tool(fn_name, validated, {"task_id": task_id, "phase": phase})
+    except Exception:
+        pass
+    try:
+        from local_ai_agent_orchestrator.services.otel import span as _otel_span
+    except Exception:
+        from contextlib import contextmanager as _cm
+
+        @_cm
+        def _otel_span(*_a, **_k):  # type: ignore[no-redef]
+            yield
+    try:
+        with _otel_span(f"tool.{fn_name}", phase=phase, task_id=task_id or -1):
+            result = tool.call(**validated)
+    except TypeError as te:
+        result = f"ERROR: {te}"
     except Exception as e:
-        duration = time.time() - start
-        queue.log_run(
-            task_id=task.id, phase="coder", model_key=model_key,
-            duration_seconds=duration, success=False, error=str(e),
-        )
-        raise
+        result = f"ERROR: {e}"
+    duration_ms = int((time.time() - started) * 1000)
+    try:
+        _hooks.post_tool(fn_name, validated, result, {"task_id": task_id, "phase": phase})
+    except Exception:
+        pass
+    if queue is not None:
+        try:
+            queue.log_tool_audit(
+                task_id=task_id,
+                phase=phase,
+                tool_name=fn_name,
+                args_json=_tool_base.safe_json_dumps(validated),
+                granted=True,
+                reason=decision.reason,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
+    return str(result)
 
 
 def _coder_tool_loop(
@@ -746,25 +944,28 @@ def _coder_tool_loop(
     messages: list[dict],
     max_tokens: int,
     max_rounds: int = 10,
+    *,
+    queue: Optional[TaskQueue] = None,
+    task_id: Optional[int] = None,
 ) -> str:
     """
     Run the coder with tool-use in a loop.
     The model calls tools (file_read, file_write, etc.) and we execute them,
     feeding results back until the model produces a final text response.
     """
-    files_written = []
+    files_written: list[str] = []
 
     for round_num in range(max_rounds):
         response = _llm_call(
             client, model_key, messages,
             tools=TOOL_SCHEMAS, max_tokens=max_tokens,
+            role="coder",
         )
 
         choice = response.choices[0]
         msg = choice.message
 
         if msg.tool_calls:
-            # Add the assistant message with tool calls
             messages.append({
                 "role": "assistant",
                 "content": msg.content,
@@ -781,7 +982,6 @@ def _coder_tool_loop(
                 ],
             })
 
-            # Execute each tool call
             for tc in msg.tool_calls:
                 fn_name = tc.function.name
                 try:
@@ -791,12 +991,15 @@ def _coder_tool_loop(
 
                 log.info(f"[Coder] Tool call: {fn_name}({list(fn_args.keys())})")
 
-                if fn_name in TOOL_DISPATCH:
-                    result = TOOL_DISPATCH[fn_name](**fn_args)
-                    if fn_name in ("file_write", "file_patch") and result.startswith("OK"):
-                        files_written.append(fn_args.get("path", "unknown"))
-                else:
-                    result = f"ERROR: Unknown tool '{fn_name}'"
+                result = _dispatch_tool_call(
+                    fn_name, fn_args, queue=queue, task_id=task_id, phase="coder"
+                )
+                if (
+                    fn_name in ("file_write", "file_patch")
+                    and isinstance(result, str)
+                    and result.startswith("OK")
+                ):
+                    files_written.append(fn_args.get("path", "unknown"))
 
                 messages.append({
                     "role": "tool",
@@ -804,12 +1007,10 @@ def _coder_tool_loop(
                     "content": str(result)[:3000],
                 })
 
-            # Trim message history if it's getting too long (keep system + last N messages)
-            if len(messages) > 20:
-                messages = [messages[0]] + messages[-16:]
+            # Conversation compaction (replaces naive last-16 trim).
+            messages = compact_messages(messages, threshold=20)
 
         else:
-            # Final text response
             summary = msg.content or "(no summary)"
             if files_written:
                 summary += f"\n\nFiles written: {', '.join(files_written)}"
@@ -1024,7 +1225,9 @@ def reviewer_phase(
         response = _llm_call(
             client, model_key, messages,
             max_tokens=cfg.max_completion,
-            temperature=0.1,
+            temperature=0.0,
+            role="reviewer",
+            json_schema=REVIEWER_JSON_SCHEMA,
         )
         content = response.choices[0].message.content or ""
         duration = time.time() - start
@@ -1062,6 +1265,14 @@ def reviewer_phase(
             plan_git.commit_after_reviewer(
                 ws, task.plan_id, task.id, task.title, "approved"
             )
+            try:
+                from local_ai_agent_orchestrator.services.extract_memories import (
+                    extract_for_task,
+                )
+
+                extract_for_task(queue, task, task.coder_output or "", summary or "")
+            except Exception as ex:
+                log.debug(f"[Memory] extract_for_task failed: {ex}")
         else:
             if task.attempt + 1 >= min(task.max_attempts, reviewer_cap):
                 queue.mark_failed(

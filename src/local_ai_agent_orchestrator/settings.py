@@ -26,6 +26,12 @@ class ModelConfig:
     supports_tools: bool
     size_bytes: int
     description: str
+    # Determinism knobs (per role).
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    seed: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    supports_json_schema: bool = False
 
 
 def _default_models() -> dict[str, ModelConfig]:
@@ -88,6 +94,24 @@ class GitSettings:
     enabled: bool = True
     plan_file_name: str = "LAO_PLAN.md"
     commit_trailers: bool = False
+    worktrees: bool = False  # speculative coder retries inside `git worktree add`
+
+
+@dataclass
+class HooksSettings:
+    """Optional ``hooks.py`` discovery for pre/post tool & phase callbacks."""
+
+    enabled: bool = True
+    path: Optional[str] = None  # defaults to <config_dir>/hooks.py
+
+
+@dataclass
+class OTelSettings:
+    """Optional OpenTelemetry exporter (lazy-loaded)."""
+
+    enabled: bool = False
+    endpoint: Optional[str] = None
+    service_name: str = "lao"
 
 
 @dataclass
@@ -157,6 +181,23 @@ class Settings:
     memory_poll_interval_s: int = 2
 
     git: GitSettings = field(default_factory=GitSettings)
+    hooks: HooksSettings = field(default_factory=HooksSettings)
+    otel: OTelSettings = field(default_factory=OTelSettings)
+
+    # New tunables (Tier 1-3 features).
+    permissions: dict[str, Any] = field(
+        default_factory=lambda: {"mode": "auto", "allow": [], "deny": []}
+    )
+    skills_dirs: list[str] = field(default_factory=list)
+    skills_enabled: bool = True
+    memory_enabled: bool = True
+    memory_user_path: Optional[str] = None  # default: ~/.lao/MEMORY.md
+    memory_project_filename: str = "LAO_MEMORY.md"
+    output_style: str = "narrative"  # terse | narrative | json
+    mcp_servers: list[dict[str, Any]] = field(default_factory=list)
+    verifier_enabled: bool = True
+    compaction_enabled: bool = True
+    compaction_keep_recent: int = 8
 
     @property
     def openai_base_url(self) -> str:
@@ -387,6 +428,19 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 supports_tools=bool(spec.get("supports_tools", cur.supports_tools)),
                 size_bytes=int(spec.get("size_bytes", cur.size_bytes)),
                 description=str(spec.get("description", cur.description)),
+                temperature=(
+                    float(spec["temperature"]) if spec.get("temperature") is not None else cur.temperature
+                ),
+                top_p=(float(spec["top_p"]) if spec.get("top_p") is not None else cur.top_p),
+                seed=(int(spec["seed"]) if spec.get("seed") is not None else cur.seed),
+                repetition_penalty=(
+                    float(spec["repetition_penalty"])
+                    if spec.get("repetition_penalty") is not None
+                    else cur.repetition_penalty
+                ),
+                supports_json_schema=bool(
+                    spec.get("supports_json_schema", cur.supports_json_schema)
+                ),
             )
         base = replace(base, models=merged)
 
@@ -399,8 +453,96 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                 enabled=bool(git_cfg.get("enabled", g.enabled)),
                 plan_file_name=str(git_cfg.get("plan_file_name", g.plan_file_name)),
                 commit_trailers=bool(git_cfg.get("commit_trailers", g.commit_trailers)),
+                worktrees=bool(git_cfg.get("worktrees", g.worktrees)),
             ),
         )
+
+    # ── New tunables (Tier 1-3) ─────────────────────────────────────
+    perms = data.get("permissions")
+    if isinstance(perms, dict):
+        base = replace(
+            base,
+            permissions={
+                "mode": str(perms.get("mode", "auto")).strip().lower() or "auto",
+                "allow": [str(x) for x in (perms.get("allow") or []) if str(x).strip()],
+                "deny": [str(x) for x in (perms.get("deny") or []) if str(x).strip()],
+            },
+        )
+
+    skills_cfg = data.get("skills")
+    if isinstance(skills_cfg, dict):
+        base = replace(
+            base,
+            skills_enabled=bool(skills_cfg.get("enabled", base.skills_enabled)),
+            skills_dirs=[
+                str((yaml_root / d).resolve()) if not Path(d).is_absolute() else str(Path(d))
+                for d in (skills_cfg.get("dirs") or [])
+                if str(d).strip()
+            ],
+        )
+
+    mem_cfg = data.get("memory")
+    if isinstance(mem_cfg, dict):
+        base = replace(
+            base,
+            memory_enabled=bool(mem_cfg.get("enabled", base.memory_enabled)),
+            memory_user_path=(
+                str(mem_cfg["user_path"]) if mem_cfg.get("user_path") else base.memory_user_path
+            ),
+            memory_project_filename=str(
+                mem_cfg.get("project_filename", base.memory_project_filename)
+            ),
+        )
+
+    if "output_style" in data:
+        base = replace(base, output_style=str(data["output_style"]).strip().lower() or "narrative")
+
+    mcp_cfg = data.get("mcp_servers")
+    if isinstance(mcp_cfg, list):
+        servers: list[dict[str, Any]] = []
+        for entry in mcp_cfg:
+            if isinstance(entry, dict) and entry.get("name"):
+                servers.append({k: v for k, v in entry.items() if v is not None})
+        base = replace(base, mcp_servers=servers)
+
+    hooks_cfg = data.get("hooks")
+    if isinstance(hooks_cfg, dict):
+        base = replace(
+            base,
+            hooks=HooksSettings(
+                enabled=bool(hooks_cfg.get("enabled", base.hooks.enabled)),
+                path=(str(hooks_cfg["path"]) if hooks_cfg.get("path") else base.hooks.path),
+            ),
+        )
+
+    otel_cfg = data.get("otel")
+    if isinstance(otel_cfg, dict):
+        base = replace(
+            base,
+            otel=OTelSettings(
+                enabled=bool(otel_cfg.get("enabled", base.otel.enabled)),
+                endpoint=(
+                    str(otel_cfg["endpoint"]) if otel_cfg.get("endpoint") else base.otel.endpoint
+                ),
+                service_name=str(otel_cfg.get("service_name", base.otel.service_name)),
+            ),
+        )
+
+    orch_extra = data.get("orchestration") or {}
+    if isinstance(orch_extra.get("verifier_enabled"), bool):
+        base = replace(base, verifier_enabled=bool(orch_extra["verifier_enabled"]))
+    if isinstance(orch_extra.get("compaction_enabled"), bool):
+        base = replace(base, compaction_enabled=bool(orch_extra["compaction_enabled"]))
+    if (
+        "compaction_keep_recent" in orch_extra
+        and orch_extra["compaction_keep_recent"] is not None
+    ):
+        try:
+            base = replace(
+                base, compaction_keep_recent=int(orch_extra["compaction_keep_recent"])
+            )
+        except (TypeError, ValueError):
+            pass
 
     return base
 

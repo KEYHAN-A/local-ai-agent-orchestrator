@@ -798,6 +798,26 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Skip the analyst phase (no project-wide context report before architect)",
     )
+    run_opts.add_argument(
+        "--permission-mode",
+        type=str,
+        default=None,
+        choices=["auto", "confirm", "plan_only", "bypass"],
+        help="Tool permission mode (overrides factory.yaml: permissions.mode)",
+    )
+    run_opts.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the deterministic seed for every role model in this run.",
+    )
+    run_opts.add_argument(
+        "--output-style",
+        type=str,
+        default=None,
+        choices=["terse", "narrative", "json"],
+        help="Override factory.yaml: output_style for this run.",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Command")
 
@@ -855,6 +875,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Tag(s) for the project (with add)",
     )
     sub.add_parser("health", help="Check LM Studio and models")
+    sub.add_parser("doctor", help="Grouped diagnostics (LM Studio, models, git, embedder, etc.)")
+    sub.add_parser("mcp-server", help="Run LAO as an MCP server over stdio")
+    skills_p = sub.add_parser("skills", help="List or activate bundled / user skills")
+    skills_p.add_argument("skills_action", nargs="?", default="list", choices=["list", "show"])
+    skills_p.add_argument("skills_target", nargs="?", default=None)
+    memory_p = sub.add_parser("memory", help="Inspect or edit LAO_MEMORY.md")
+    memory_p.add_argument(
+        "memory_action", nargs="?", default="show", choices=["show", "edit", "forget"]
+    )
+    memory_p.add_argument("memory_target", nargs="?", default=None)
     sub.add_parser("retry-failed", help="Retry failed tasks by resetting them to pending")
     sub.add_parser("reset-failed", help="Deprecated alias for retry-failed")
     sub.add_parser("configure-models", help="Interactively update model keys in factory.yaml")
@@ -958,6 +988,10 @@ def main(argv: list[str] | None = None) -> None:
             overrides["pilot_mode_enabled"] = False
         if args.no_analyst:
             overrides["analyst_enabled"] = False
+        if getattr(args, "permission_mode", None):
+            overrides["permissions"] = {"mode": args.permission_mode, "allow": [], "deny": []}
+        if getattr(args, "output_style", None):
+            overrides["output_style"] = args.output_style
 
         if args.command == "configure-models":
             raise SystemExit(_configure_models_interactive(cwd, cfg_path))
@@ -968,6 +1002,20 @@ def main(argv: list[str] | None = None) -> None:
             model_key_overrides=model_keys or None,
             **overrides,
         )
+
+        if getattr(args, "seed", None) is not None:
+            from dataclasses import replace as _dc_replace
+            from local_ai_agent_orchestrator.settings import (
+                get_settings as _gs_seed,
+                _settings as _settings_module,  # type: ignore[attr-defined]
+            )
+            _s = _gs_seed()
+            new_models = {
+                role: _dc_replace(cfg, seed=int(args.seed)) for role, cfg in _s.models.items()
+            }
+            import local_ai_agent_orchestrator.settings as _settings_mod
+
+            _settings_mod._settings = _dc_replace(_s, models=new_models)
 
         from local_ai_agent_orchestrator import runner
 
@@ -1102,6 +1150,66 @@ def main(argv: list[str] | None = None) -> None:
             q = TaskQueue()
             reset_count = q.reset_failed_tasks()
             print(f"Reset {reset_count} failed tasks to pending.")
+            return
+
+        if cmd == "doctor":
+            from local_ai_agent_orchestrator.doctor import run_doctor
+
+            raise SystemExit(run_doctor())
+
+        if cmd == "mcp-server":
+            from local_ai_agent_orchestrator.services import mcp_server as _mcp
+
+            raise SystemExit(_mcp.serve())
+
+        if cmd == "skills":
+            from local_ai_agent_orchestrator import skills as _skills_mod
+
+            action = getattr(args, "skills_action", "list") or "list"
+            target = getattr(args, "skills_target", None)
+            if action == "list":
+                items = _skills_mod.list_skills()
+                if not items:
+                    print("(no skills loaded)")
+                    return
+                for sk in items:
+                    print(f"- {sk.name}: {sk.description or '(no description)'}")
+                return
+            if action == "show":
+                if not target:
+                    print("Usage: lao skills show <name>")
+                    raise SystemExit(2)
+                sk = _skills_mod.get_skill(target)
+                if sk is None:
+                    print(f"Unknown skill: {target}")
+                    raise SystemExit(1)
+                print(sk.addendum())
+                return
+            return
+
+        if cmd == "memory":
+            from local_ai_agent_orchestrator.services import memory as _memory_svc
+
+            action = getattr(args, "memory_action", "show") or "show"
+            target = getattr(args, "memory_target", None)
+            if action == "show":
+                block = _memory_svc.read_memory_block()
+                print(block or "(memory is empty)")
+                return
+            if action == "edit":
+                if not target:
+                    print("Usage: lao memory edit \"<fact>\"")
+                    raise SystemExit(2)
+                ok = _memory_svc.append_fact(target, scope="project", source="cli")
+                print("OK: appended" if ok else "OK: fact already present")
+                return
+            if action == "forget":
+                if not target:
+                    print("Usage: lao memory forget \"<substring>\"")
+                    raise SystemExit(2)
+                removed = _memory_svc.forget_fact(target, scope="project")
+                print(f"Removed {removed} line(s)")
+                return
             return
 
         if cmd == "pilot" or args.pilot_only:
