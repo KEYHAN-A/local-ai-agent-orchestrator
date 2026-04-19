@@ -27,6 +27,7 @@ from local_ai_agent_orchestrator.phases import (
     preflight_plan_context,
     reviewer_phase,
 )
+from local_ai_agent_orchestrator.verifier import verifier_phase
 from local_ai_agent_orchestrator.settings import get_settings
 from local_ai_agent_orchestrator.state import ReservedPlanStemError, TaskQueue
 from local_ai_agent_orchestrator.reporting import write_quality_report
@@ -35,6 +36,32 @@ from local_ai_agent_orchestrator.tools import use_plan_workspace
 log = logging.getLogger(__name__)
 
 from local_ai_agent_orchestrator.unified_ui import apply_runner_context
+
+
+def _run_verifier_or_rework(queue: TaskQueue, task) -> bool:
+    """Return True when the task is clean and may proceed to the reviewer.
+
+    On failure the task is sent back to the coder via mark_rework with the
+    structured verifier feedback prepended; the reviewer attempt counter is
+    NOT incremented.
+    """
+    try:
+        s = get_settings()
+        if not getattr(s, "verifier_enabled", True):
+            return True
+    except Exception:
+        pass
+    try:
+        # Refresh task to pick up the latest coder_output.
+        fresh = queue.get_task(task.id) or task
+        report = verifier_phase(queue, fresh, fresh.coder_output or "")
+    except Exception as e:
+        log.warning(f"[Verifier] task #{task.id} verifier raised: {e}; allowing reviewer to proceed")
+        return True
+    if report.ok:
+        return True
+    queue.mark_rework(task.id, report.to_repair_text())
+    return False
 
 
 def _signal_handler(sig, frame):
@@ -141,6 +168,8 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                         queue.mark_rework(task.id, f"Coder error: {e}")
                 task = queue.next_coded(phase_name=phase_filter)
                 if task:
+                    if not _run_verifier_or_rework(queue, task):
+                        continue
                     try:
                         with use_plan_workspace(queue, task.plan_id):
                             reviewer_phase(mm, queue, task)
@@ -186,6 +215,10 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                 task=f"#{task.id} {task.title}",
                 attempt=f"{task.attempt + 1}/{task.max_attempts}",
             )
+            if not _run_verifier_or_rework(queue, task):
+                reviewed += 1
+                task = queue.next_coded(phase_name=phase_filter)
+                continue
             try:
                 with use_plan_workspace(queue, task.plan_id):
                     reviewer_phase(mm, queue, task)
@@ -558,6 +591,19 @@ def run_entry(
         queue = TaskQueue()
         if ui is not None:
             ui.set_queue_getter(lambda: queue)
+
+        try:
+            from local_ai_agent_orchestrator.skills import load_skills as _load_skills
+            from local_ai_agent_orchestrator.services.mcp_client import (
+                discover_and_register as _mcp_connect,
+            )
+            from local_ai_agent_orchestrator import hooks_registry as _hooks_init
+
+            _load_skills()
+            _mcp_connect()
+            _hooks_init.reload()
+        except Exception as exc:
+            log.warning("optional subsystem init failed: %s", exc)
 
         mm = ModelManager()
 

@@ -126,3 +126,32 @@ lao --lm-studio-url http://192.168.1.10:1234 --ram-gb 64 \
 ```
 
 Pilot-related flags (see **`lao run --help`**): **`--no-pilot`** disables idle Pilot on TTY; **`--pilot-only`** opens Pilot immediately (same path as **`lao pilot`**). **`--pilot-model`** overrides the pilot role key.
+
+## Reliability & Quality knobs (Unreleased)
+
+| Setting | Type | Default | Notes |
+|---|---|---|---|
+| `permissions.mode` | `auto \| confirm \| plan_only \| bypass` | `auto` | `--permission-mode` overrides per run. |
+| `permissions.allow` / `permissions.deny` | list of rules | `[]` | Wildcards: `Bash(git *)`, `FileWrite(/src/*)`, … |
+| `verifier_enabled` | bool | `true` | Mechanical pre-reviewer pass (file existence, AST/JSON parse, TODO ledger). |
+| `compaction_enabled` / `compaction_keep_recent` | bool / int | `true` / `8` | Replaces the legacy `last 16` trim. |
+| `skills_enabled` / `skills_dirs` | bool / list | `true` / `[]` | Bundled skills always load; user dirs append. |
+| `memory_enabled`, `memory_project_filename`, `memory_user_path` | bool / str | `true`, `LAO_MEMORY.md`, `~/.lao/MEMORY.md` | Markdown memory injected as a system-prompt prelude. |
+| `output_style` | `terse \| narrative \| json` | `narrative` | Affects free-form replies; structured JSON outputs unaffected. |
+| `mcp_servers` | list of `{name, command, env?, cwd?}` | `[]` | Discovered tools register as `mcp__<server>__<tool>`. |
+| `models[<role>].temperature / top_p / seed / repetition_penalty` | numeric | model-specific | Per-role determinism; reviewer defaults to `temperature: 0.0`. `--seed` overrides every role for the run. |
+| `git.worktrees` | bool | `false` | Speculative coder retries inside isolated `git worktree` instances. |
+| `hooks.path` | path | unset | Discovers a Python file with `pre_tool` / `post_tool` / `pre_phase` / `post_phase`. |
+| `otel.enabled` / `otel.endpoint` / `otel.service_name` | bool / str / str | `false` / unset / `lao` | Optional OpenTelemetry HTTP OTLP exporter. `LAO_OTEL_ENDPOINT` env var also enables it. |
+
+### New CLI surfaces
+
+```
+lao doctor                # grouped LM Studio / models / disk / schema diagnostics
+lao mcp-server            # expose LAO tools to other agents over stdio
+lao skills [list|show <name>]
+lao memory  [show|edit "fact"|forget "substring"]
+lao run --permission-mode {auto|confirm|plan_only|bypass}
+lao run --seed <int>
+lao run --output-style {terse|narrative|json}
+```

@@ -9,6 +9,54 @@ Each builder returns a list of messages ready for the OpenAI chat completions AP
 from local_ai_agent_orchestrator.state import MicroTask
 
 
+def _augment_system(prompt: str, *, with_memory: bool = True, with_skills: bool = True) -> str:
+    """Prepend per-project memory and active-skill addenda to a system prompt.
+
+    Both injections are best-effort: failures (e.g. settings not initialized in
+    tests) leave the prompt unchanged.
+    """
+    extras: list[str] = []
+    if with_memory:
+        try:
+            from local_ai_agent_orchestrator.services import memory as _memory
+
+            block = _memory.read_memory_block()
+            if block:
+                extras.append(block)
+        except Exception:
+            pass
+    if with_skills:
+        try:
+            from local_ai_agent_orchestrator.skills import active_addendum
+
+            addend = active_addendum()
+            if addend:
+                extras.append("=== Active skill ===\n" + addend)
+        except Exception:
+            pass
+    try:
+        from local_ai_agent_orchestrator.settings import get_settings as _gs
+
+        style = (_gs().output_style or "").strip().lower()
+        if style == "terse":
+            extras.append(
+                "=== Output style ===\n"
+                "Reply in <=3 short sentences plus structured fields. "
+                "Skip narrative; use bullet points only when needed."
+            )
+        elif style == "json":
+            extras.append(
+                "=== Output style ===\n"
+                "Where the schema permits free-form text, format every reply as compact JSON. "
+                "Do not add prose outside the JSON object."
+            )
+    except Exception:
+        pass
+    if not extras:
+        return prompt
+    return "\n\n".join(extras) + "\n\n---\n\n" + prompt
+
+
 # ── System Prompts ───────────────────────────────────────────────────
 
 ARCHITECT_SYSTEM = """You are a software architect. Your job is to decompose a project plan into atomic, file-level micro-tasks.
@@ -35,13 +83,18 @@ Output plain text bullets only. No markdown fences."""
 CODER_SYSTEM = """You are a senior software developer. Implement exactly what the task describes.
 
 Rules:
-- Write complete, production-ready code. No placeholders. No TODOs.
-- Use the tools provided to read existing files when you need context.
+- Before any file_write, call task_todo_set with one TODO per deliverable_id (or per file if no deliverables).
+  Mark each TODO `in_progress` while working and `completed` after the corresponding file is written.
+  The verifier will reject the task if any TODO remains pending.
+- Always call file_read on a target file before file_patch'ing it.
+- Write complete, production-ready code. No placeholders. No TODOs in the code itself.
 - Use file_write to create or overwrite files with your implementation.
-- Use file_patch for small edits to existing files.
+- Use file_patch for small edits; the `old` string must match the file exactly.
 - Do not add unnecessary comments. Let the code speak for itself.
-- If the task mentions dependencies on other files, read them first.
-- After writing all files, respond with a brief summary of what you implemented."""
+- If a request is ambiguous or design-heavy, call enter_plan_mode first and propose
+  a plan; only call exit_plan_mode after the user (or the architect's intent) confirms it.
+- After writing all files, respond with `Files written: a, b, c` so the verifier
+  can audit the actual writes against the claimed list."""
 
 CODER_SYSTEM_NO_TOOLS = """You are a senior software developer. Implement exactly what the task describes.
 
@@ -196,14 +249,14 @@ def build_architect_messages(
             f"---\n\n{user_content}"
         )
     return [
-        {"role": "system", "content": ARCHITECT_SYSTEM},
+        {"role": "system", "content": _augment_system(ARCHITECT_SYSTEM)},
         {"role": "user", "content": user_content},
     ]
 
 
 def build_architect_summary_messages(section_text: str) -> list[dict]:
     return [
-        {"role": "system", "content": ARCHITECT_SUMMARY_SYSTEM},
+        {"role": "system", "content": _augment_system(ARCHITECT_SUMMARY_SYSTEM)},
         {"role": "user", "content": f"Summarize this plan section:\n\n{section_text}"},
     ]
 
@@ -242,7 +295,7 @@ def build_coder_messages(
             context_parts.append(f"\n### {path}\n```\n{content}\n```")
 
     return [
-        {"role": "system", "content": system},
+        {"role": "system", "content": _augment_system(system)},
         {"role": "user", "content": "\n".join(context_parts)},
     ]
 
@@ -262,7 +315,7 @@ def build_reviewer_messages(
         content = f"## Project Context (from analyst)\n{analyst_context}\n\n---\n\n{content}"
 
     return [
-        {"role": "system", "content": REVIEWER_SYSTEM},
+        {"role": "system", "content": _augment_system(REVIEWER_SYSTEM)},
         {"role": "user", "content": content},
     ]
 
@@ -270,7 +323,7 @@ def build_reviewer_messages(
 def build_analyst_messages(analyst_input: str) -> list[dict]:
     """Build messages for the analyst phase (read-only project survey)."""
     return [
-        {"role": "system", "content": ANALYST_SYSTEM},
+        {"role": "system", "content": _augment_system(ANALYST_SYSTEM)},
         {"role": "user", "content": f"Survey this workspace and produce the JSON report:\n\n{analyst_input}"},
     ]
 
@@ -288,7 +341,7 @@ def build_pilot_messages(
     conversation_history: prior user/assistant/tool messages from the session
     project_context: optional extra context injected after a project switch
     """
-    system_content = PILOT_SYSTEM
+    system_content = _augment_system(PILOT_SYSTEM)
     if context_summary:
         system_content += f"\n\n## Current Context\n{context_summary}"
     if project_context:
@@ -296,4 +349,13 @@ def build_pilot_messages(
 
     messages: list[dict] = [{"role": "system", "content": system_content}]
     messages.extend(conversation_history)
+    try:
+        from local_ai_agent_orchestrator.services.compact import compact_messages
+        from local_ai_agent_orchestrator.settings import get_settings as _gs
+
+        s = _gs()
+        if s.compaction_enabled:
+            messages = compact_messages(messages, keep_recent=s.compaction_keep_recent)
+    except Exception:
+        pass
     return messages

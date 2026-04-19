@@ -110,7 +110,36 @@ Phases use **short system prompts** and **no Crew-style ReAct history** by defau
 
 ## Adding a new workspace tool
 
-1. Implement the function in `tools.py` following the `file_read` / `shell_exec` pattern (returns a string, uses `_resolve_path`).
-2. Add an OpenAI function schema to `TOOL_SCHEMAS`.
-3. Add a dispatch entry to `TOOL_DISPATCH`.
-4. For pilot-only tools, add to `PILOT_TOOL_SCHEMAS` / `PILOT_TOOL_DISPATCH` in `pilot_tools.py` instead.
+`tools.py` is now a `tools/` package. Each tool is a `Tool` dataclass registered into a single module-level registry; the OpenAI schema list and dispatch map are derived from the registry, so there is no longer any dual maintenance.
+
+1. Pick the right submodule under `src/local_ai_agent_orchestrator/tools/` (`fs.py`, `shell.py`, `search.py`, `todos.py`, `plan_mode.py`, `skills_tools.py`, `memory_tools.py`, `subagent.py`) — or create a new one.
+2. Implement the function. Return a string (or JSON-serializable value); use `tools.meta.resolve_path` for filesystem operations.
+3. Build a `Tool(...)` and pass it to `register(...)`. Set `is_read_only`, `is_concurrency_safe`, `plan_mode_safe`, and `check_permissions` accordingly.
+4. If the tool should be visible to the coder, add its name to `_coder_tool_names()` in `tools/__init__.py`.
+5. For pilot-only tools, add to `PILOT_TOOL_SCHEMAS` / `PILOT_TOOL_DISPATCH` in `pilot_tools.py` instead.
+
+## Reliability subsystems (Unreleased)
+
+```
+runner.run_factory
+  ├─ analyst_phase
+  ├─ architect_phase                  ← uses _llm_call(json_schema=ARCHITECT_JSON_SCHEMA)
+  ├─ for each task:
+  │    coder_phase                    ← _dispatch_tool_call → permissions → audit → hooks → otel span
+  │    verifier_phase  (NEW)          ← file existence, AST/JSON parse, TODO ledger
+  │    reviewer_phase                 ← uses _llm_call(json_schema=REVIEWER_JSON_SCHEMA)
+  │    extract_memories  (post-approval) → LAO_MEMORY.md / ~/.lao/MEMORY.md
+  └─ pilot_loop (idle)
+```
+
+Cross-cutting modules:
+
+- `permissions.py` — mode + wildcard rules; consulted in every tool dispatch; results land in the new `tool_audit` SQLite table.
+- `services/compact.py` — system-preserving message compaction with optional LLM summarizer.
+- `verifier.py` — mechanical checks; failures force coder retry without consuming reviewer attempts.
+- `skills/` and `services/memory.py` — both contribute prompt addenda via `prompts._augment_system`.
+- `hooks_registry.py` — discovers `<config_dir>/hooks.py` and exposes `pre_tool` / `post_tool` / `pre_phase` / `post_phase`.
+- `services/mcp_client.py` & `services/mcp_server.py` — MCP integration, both directions.
+- `worktrees.py` — speculative coder attempts inside isolated `git worktree` directories (gated by `git.worktrees`).
+- `services/otel.py` — lazy-loaded OpenTelemetry exporter; wraps every tool call in a span when an endpoint is configured.
+- `doctor.py` — backs `lao doctor`; safe to run even without a live LM Studio.
