@@ -4,6 +4,37 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 
 ## Unreleased
 
+(nothing yet)
+
+## v3.1.0 — Reliability & Quality Overhaul (2026-04-19)
+
+### Tier 1 — correctness & determinism
+- **Tool contract refactor**: `tools.py` is now a `tools/` package. Every tool is a registered `Tool` dataclass carrying its own JSON-schema, permission callback, read-only / concurrency markers and prompt contribution; OpenAI schemas and the dispatch map are now built deterministically from the registry instead of dual-maintained dicts.
+- **JSON-schema response mode**: `_llm_call` now accepts a `json_schema=` payload and uses `response_format={"type":"json_schema",…}` for architect / reviewer / analyst when the model advertises support; falls back to the existing regex parser otherwise.
+- **Mechanical verifier phase**: a deterministic pre-reviewer pass (`verifier.py`) confirms claimed files exist, parse (Python / JSON / YAML), stay inside the workspace, and that the per-task TODO ledger is finished. Failures force a coder retry without consuming a reviewer attempt.
+- **Per-task TODO ledger**: new `task_todos` SQLite table plus `task_todo_set` / `task_todo_get` tools. Coder prompt mandates publishing a checklist before the first `file_write`; verifier rejects unfinished items.
+- **Permission system**: new `permissions.py` with modes (`auto`, `confirm`, `plan_only`, `bypass`) and Claude-Code-style wildcard rules (`Bash(git *)`, `FileWrite(/src/*)`). Wired into every tool dispatch with audit trail in the new `tool_audit` table; exposed via `lao run --permission-mode`.
+
+### Tier 2 — guidance & memory
+- **Plan mode**: first-class `enter_plan_mode` / `exit_plan_mode` tools; the permission layer blocks mutating tools until the user explicitly approves the proposed plan.
+- **Skills system**: `skills/` package with bundled `verify`, `stuck`, `simplify`, `write_tests`, `refactor_safe`, `security_audit`, `repro_bug` skills. `skill_list` / `skill_run` / `skill_clear` tools, plus `lao skills [list|show <name>]` CLI.
+- **Hierarchical memory**: project-scoped `LAO_MEMORY.md` and user-global `~/.lao/MEMORY.md`. New `memory_read` / `memory_append` / `memory_forget` tools, automatic post-approval extraction in `services/extract_memories.py`, and `lao memory [show|edit|forget]` CLI.
+- **Conversation compaction**: `services/compact.py` replaces naive `[system] + last_16` trims with a system-preserving compactor that summarizes the dropped middle (LLM summarizer optional, character-budget fallback by default).
+- **Speculative coder retries via git worktrees**: `worktrees.py` provides `attempt_worktree(...)` for isolated coder attempts, gated by `git.worktrees: true`.
+
+### Tier 3 — extensibility & observability
+- **MCP integration**: `services/mcp_client.py` auto-registers external MCP servers declared in `factory.yaml: mcp_servers` as `mcp__<server>__<tool>` tools. `lao mcp-server` exposes a curated subset of LAO tools to other agents over stdio.
+- **Sub-agents**: new `agent_run(goal, allowed_tools, max_rounds)` tool runs an ephemeral, read-only subagent for bounded investigations from the pilot.
+- **Per-role determinism knobs**: `temperature`, `top_p`, `seed`, `repetition_penalty` are now per-role on `ModelConfig`; reviewer defaults to `temperature: 0.0`. New `--seed` flag overrides every role for the run.
+- **`lao doctor`**: grouped diagnostics (LM Studio, models, RAM budget, git, embedder, validators, disk, schema) with `ok | warn | fail` per row and remediation hints.
+- **Hooks framework**: `hooks_registry.py` discovers `<config_dir>/hooks.py` and exposes `pre_tool` / `post_tool` / `pre_phase` / `post_phase` extension points.
+- **OpenTelemetry exporter**: optional, lazy-loaded (`services/otel.py`) — wraps every tool call in a span when `LAO_OTEL_ENDPOINT` or `otel.enabled` is set. New `output_style: terse|narrative|json` knob shapes free-form replies across phases via `--output-style`.
+
+### Tests & docs
+- New tests: `test_tool_contract`, `test_permissions`, `test_skills`, `test_memory`, `test_compact`, `test_verifier_phase`, `test_plan_mode`.
+- Suite green: 235 tests pass.
+- README, GitHub Pages (`docs/index.html`), `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `factory.example.yaml` updated for the new configuration surface.
+
 ## v3.0.12 — Fix analyst role missing from init wizard
 
 - **Fix:** `lao init` raised `KeyError: 'analyst'` when the user chose manual model keys — `analyst` was not included in `_default_model_profiles()` for any tier.
