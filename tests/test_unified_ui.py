@@ -22,6 +22,8 @@ from local_ai_agent_orchestrator.unified_ui import (
     UnifiedUI,
     ViewComposer,
     _detect_color_support,
+    _model_swap_mini_bar,
+    _model_swap_mini_bar_html,
     _strip_ansi,
     apply_runner_context,
     get_unified_ui,
@@ -191,7 +193,16 @@ class TestRenderBus(unittest.TestCase):
 
 class TestViewComposerPlain(unittest.TestCase):
     def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
         self.composer = ViewComposer(_plain_caps())
+
+    def tearDown(self):
+        reset_settings_for_tests()
+        self._td.cleanup()
 
     def _compose_str(self, event: RenderEvent) -> str:
         return "\n".join(str(r) for r in self.composer.compose(event))
@@ -269,6 +280,17 @@ class TestViewComposerPlain(unittest.TestCase):
     def test_banner_contains_lao(self):
         result = self._compose_str(RenderEvent(EventKind.BANNER, {}))
         self.assertIn("LAO", result)
+
+    def test_model_swap_mini_bar_varies_with_tick(self):
+        a = _model_swap_mini_bar(0)
+        b = _model_swap_mini_bar(3)
+        self.assertTrue(a.startswith("[") and a.endswith("]"))
+        self.assertTrue(b.startswith("[") and b.endswith("]"))
+
+    def test_model_swap_mini_bar_html_is_markup(self):
+        h = _model_swap_mini_bar_html(1)
+        self.assertIn("[", h)
+        self.assertIn("]", h)
 
     def test_ansi_in_content_is_stripped(self):
         result = self._compose_str(

@@ -342,6 +342,18 @@ ARCHITECT_JSON_SCHEMA = {
                 "dependencies": {"type": "array", "items": {"type": "string"}},
                 "phase": {"type": "string"},
                 "deliverable_ids": {"type": "array", "items": {"type": "string"}},
+                "acceptance": {
+                    "type": "object",
+                    "properties": {
+                        "acceptance_ids": {"type": "array", "items": {"type": "string"}},
+                        "tests": {"type": "array", "items": {"type": "string"}},
+                        "commands": {"type": "array", "items": {"type": "string"}},
+                        "allowed_major": {"type": "integer"},
+                        "timeout_s": {"type": "integer"},
+                    },
+                },
+                "token_budget_estimate": {"type": "integer"},
+                "risk": {"type": "string", "enum": ["low", "med", "high"]},
             },
             "required": ["title", "description"],
         },
@@ -746,15 +758,46 @@ def _parse_architect_output(content: str) -> list[dict]:
     validated = []
     for idx, t in enumerate(tasks):
         _validate_architect_task_schema(t, idx)
-        validated.append({
+        clean: dict = {
             "title": str(t["title"]).strip(),
             "description": str(t["description"]).strip(),
             "file_paths": [str(p).strip() for p in t.get("file_paths", [])],
             "dependencies": [str(d).strip() for d in t.get("dependencies", [])],
             "phase": str(t.get("phase", "")).strip() or None,
             "deliverable_ids": [str(d).strip() for d in t.get("deliverable_ids", [])],
-        })
+        }
+        acceptance = t.get("acceptance")
+        if isinstance(acceptance, dict):
+            clean["acceptance"] = _normalise_acceptance_block(acceptance)
+        risk = t.get("risk")
+        if isinstance(risk, str) and risk.strip().lower() in {"low", "med", "high"}:
+            clean["risk"] = risk.strip().lower()
+        budget = t.get("token_budget_estimate")
+        if isinstance(budget, (int, float)) and int(budget) > 0:
+            clean["token_budget_estimate"] = int(budget)
+        validated.append(clean)
     return validated
+
+
+def _normalise_acceptance_block(payload: dict) -> dict:
+    """Filter the acceptance object to known keys with safe types."""
+    out: dict = {}
+    ids = payload.get("acceptance_ids") or payload.get("ids")
+    if isinstance(ids, list):
+        out["acceptance_ids"] = [str(x).strip() for x in ids if str(x).strip()]
+    elif isinstance(ids, str) and ids.strip():
+        out["acceptance_ids"] = [ids.strip()]
+    for key in ("tests", "commands"):
+        v = payload.get(key)
+        if isinstance(v, list):
+            out[key] = [str(x).strip() for x in v if str(x).strip()]
+        elif isinstance(v, str) and v.strip():
+            out[key] = [v.strip()]
+    if isinstance(payload.get("allowed_major"), int):
+        out["allowed_major"] = max(0, int(payload["allowed_major"]))
+    if isinstance(payload.get("timeout_s"), int):
+        out["timeout_s"] = max(1, int(payload["timeout_s"]))
+    return out
 
 
 def _validate_architect_task_schema(task: object, idx: int) -> None:
@@ -835,9 +878,16 @@ def coder_phase(
             else:
                 output = _coder_no_tools(client, model_key, messages, cfg.max_completion)
 
-            duration = time.time() - start
-
             workspace = queue.workspace_for_plan(task.plan_id)
+            repair_summary = _coder_inner_repair_loop(
+                client, queue, task, workspace, model_key, cfg
+            )
+            if repair_summary:
+                output = (
+                    f"{output}\n\n## TDD Inner-Repair Summary\n{repair_summary}"
+                )
+
+            duration = time.time() - start
             code_sig = compute_code_signature(task.file_paths or [], str(workspace))
             queue.mark_coded(task.id, output, code_signature=code_sig)
             queue.log_run(
@@ -982,6 +1032,7 @@ def _coder_tool_loop(
                 ],
             })
 
+            sig_cache: dict[tuple[str, str], str] = {}
             for tc in msg.tool_calls:
                 fn_name = tc.function.name
                 try:
@@ -989,17 +1040,24 @@ def _coder_tool_loop(
                 except json.JSONDecodeError:
                     fn_args = {}
 
-                log.info(f"[Coder] Tool call: {fn_name}({list(fn_args.keys())})")
+                sig = (fn_name, json.dumps(fn_args, sort_keys=True, default=str))
+                if sig not in sig_cache:
+                    log.info(f"[Coder] Tool call: {fn_name}({list(fn_args.keys())})")
 
-                result = _dispatch_tool_call(
-                    fn_name, fn_args, queue=queue, task_id=task_id, phase="coder"
-                )
-                if (
-                    fn_name in ("file_write", "file_patch")
-                    and isinstance(result, str)
-                    and result.startswith("OK")
-                ):
-                    files_written.append(fn_args.get("path", "unknown"))
+                    result = _dispatch_tool_call(
+                        fn_name, fn_args, queue=queue, task_id=task_id, phase="coder"
+                    )
+                    if (
+                        fn_name in ("file_write", "file_patch")
+                        and isinstance(result, str)
+                        and result.startswith("OK")
+                    ):
+                        files_written.append(fn_args.get("path", "unknown"))
+
+                    sig_cache[sig] = str(result)[:3000]
+                else:
+                    log.info("[Coder] Skipping duplicate tool in batch: %s", fn_name)
+                    result = sig_cache[sig]
 
                 messages.append({
                     "role": "tool",
@@ -1017,6 +1075,119 @@ def _coder_tool_loop(
             return summary
 
     return f"Tool loop ended after {max_rounds} rounds. Files written: {', '.join(files_written)}"
+
+
+def _coder_inner_repair_loop(
+    client: OpenAI,
+    queue: TaskQueue,
+    task: MicroTask,
+    workspace: Path,
+    model_key: str,
+    cfg,
+) -> Optional[str]:
+    """TDD repair loop: execute acceptance commands and patch until green or capped.
+
+    Returns a human-readable summary string when the loop ran (so the coder
+    output records what happened). Returns ``None`` when the task has no
+    acceptance commands to run, so legacy plans behave exactly as before.
+    """
+    s = get_settings()
+    max_iter = max(0, int(getattr(s, "inner_repair_max_iterations", 3)))
+    token_budget = max(0, int(getattr(s, "inner_repair_token_budget", 6000)))
+    if max_iter <= 0:
+        return None
+
+    fresh = queue.get_task(task.id) or task
+    acceptance = fresh.acceptance or queue.get_task_acceptance(fresh.id)
+    if not acceptance or not acceptance.get("commands"):
+        return None
+
+    from local_ai_agent_orchestrator.services.acceptance import run_task_acceptance
+
+    log.info(
+        "[Coder/TDD] Task #%s entering inner-repair loop (max %d iter, ~%d token budget)",
+        fresh.id,
+        max_iter,
+        token_budget,
+    )
+
+    spent_tokens = 0
+    last_result: dict | None = None
+    iters_used = 0
+    for it in range(max_iter + 1):
+        last_result = run_task_acceptance(queue, fresh, workspace, record=True)
+        if last_result["passed"]:
+            if it > 0:
+                log.info(
+                    "[Coder/TDD] Task #%s green after %d repair iteration(s)",
+                    fresh.id,
+                    it,
+                )
+            break
+        if it >= max_iter:
+            log.info(
+                "[Coder/TDD] Task #%s still red after %d repair iteration(s); handing off",
+                fresh.id,
+                it,
+            )
+            break
+        if token_budget and spent_tokens >= token_budget:
+            log.info(
+                "[Coder/TDD] Task #%s token budget exhausted (%d/%d)",
+                fresh.id,
+                spent_tokens,
+                token_budget,
+            )
+            break
+
+        failures = [r for r in last_result["runs"] if not r["passed"]]
+        failure_text = "\n\n".join(
+            f"$ {r['command']}\n[exit {r['return_code']}]\n{r['output']}"
+            for r in failures
+        )[:4000]
+        repair_messages = build_coder_messages(fresh, {}, use_tools=cfg.supports_tools)
+        repair_messages.append({
+            "role": "user",
+            "content": (
+                f"## Acceptance tests still failing (repair iteration {it + 1}/{max_iter})\n"
+                f"```\n{failure_text}\n```\n\n"
+                "Fix the IMPLEMENTATION (not the tests). "
+                "Read the failing test files first if you need to, then patch or "
+                "rewrite the production code. After your changes, return a brief "
+                "summary; the runner will execute the tests again."
+            ),
+        })
+
+        remaining_budget = max(512, token_budget - spent_tokens) if token_budget else cfg.max_completion
+        repair_max = min(cfg.max_completion, remaining_budget)
+        try:
+            if cfg.supports_tools:
+                _coder_tool_loop(
+                    client, model_key, repair_messages, repair_max,
+                    queue=queue, task_id=fresh.id, max_rounds=4,
+                )
+            else:
+                _coder_no_tools(client, model_key, repair_messages, repair_max)
+        except Exception as exc:
+            log.warning("[Coder/TDD] repair iter %d raised: %s", it + 1, exc)
+            break
+
+        spent_tokens += repair_max
+        iters_used = queue.increment_inner_repairs(fresh.id)
+        fresh = queue.get_task(fresh.id) or fresh
+
+    if last_result is None:
+        return None
+    status = "GREEN" if last_result.get("passed") else "RED"
+    line_one = (
+        f"Acceptance status after inner-repair loop: {status} "
+        f"(iterations={iters_used}, ~tokens_spent={spent_tokens})"
+    )
+    cmd_lines = [
+        f"- {'PASS' if r['passed'] else 'FAIL'} ({r['return_code']}): {r['command']}"
+        for r in last_result["runs"]
+    ]
+    return "\n".join([line_one, *cmd_lines])
 
 
 def _coder_no_tools(

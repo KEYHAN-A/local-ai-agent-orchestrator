@@ -23,6 +23,36 @@ class ModelManagerError(Exception):
     pass
 
 
+def _short_model_key(key: str, max_len: int = 22) -> str:
+    k = (key or "").strip()
+    if len(k) <= max_len:
+        return k
+    return k[: max_len - 1] + "…"
+
+
+def _model_swap_ui(label: str) -> None:
+    try:
+        from local_ai_agent_orchestrator.unified_ui import get_unified_ui
+
+        ui = get_unified_ui()
+        if ui is not None:
+            ui.note_model_swap_progress(label)
+    except Exception:
+        pass
+
+
+def _model_swap_tick() -> None:
+    try:
+        from local_ai_agent_orchestrator.unified_ui import get_unified_ui
+
+        ui = get_unified_ui()
+        if ui is not None:
+            ui.tick_model_swap_spinner()
+    except Exception:
+        pass
+
+
+
 class ModelManager:
     """Manages model lifecycle on a local LM Studio instance."""
 
@@ -48,6 +78,7 @@ class ModelManager:
         if cfg.key in loaded:
             log.info(f"[ModelManager] {role} model already loaded: {cfg.key}")
             self._current_llm = cfg.key
+            _model_swap_ui("")
             return cfg.key
 
         # Snapshot available RAM BEFORE unloading so the memory gate has an
@@ -61,6 +92,7 @@ class ModelManager:
         for instance_id in loaded:
             if instance_id == get_settings().models["embedder"].key:
                 continue
+            _model_swap_ui(f"unload {_short_model_key(instance_id, 26)}")
             log.info(f"[ModelManager] Unloading: {instance_id}")
             self._unload(instance_id)
             self._unload_count += 1
@@ -77,9 +109,11 @@ class ModelManager:
             self._wait_for_memory(freed_bytes, pre_unload_available)
 
         # Load the target model
+        _model_swap_ui(f"load {role} {_short_model_key(cfg.key)}")
         log.info(f"[ModelManager] Loading {role}: {cfg.key} (ctx={cfg.context_length})")
         self._load(cfg)
         self._wait_until_loaded(cfg.key)
+        _model_swap_ui("")
         self._load_count += 1
         if loaded:
             self._swap_count += 1
@@ -113,14 +147,21 @@ class ModelManager:
 
     def check_guardrails(self) -> bool:
         """
-        Probe whether LM Studio's resource guardrails will block model loading.
-        Returns True if guardrails appear to be disabled/permissive, False if
-        they will block large models.
+        Legacy hook kept for API compatibility.
 
-        Uses the --estimate-only flag on the largest model as a proxy: if the
-        estimate endpoint responds without a guardrail error, loading should work.
+        Historically this POSTed a load of the reviewer model to probe LM Studio
+        guardrails, which wasted a full model swap on every ``lao`` start.
+        Guardrail state cannot be read reliably without loading; we default to
+        permissive and point operators to ``lao doctor`` for deep diagnostics.
         """
-        # Try a dry-run load of the reviewer (largest model) to probe guardrails
+        return True
+
+    def check_guardrails_load_probe(self) -> bool:
+        """
+        Expensive probe: POST-load the reviewer model to detect guardrail blocks.
+
+        Intended for ``lao health`` / doctor when ``LAO_HEALTH_GUARD_LOAD=1``.
+        """
         cfg = get_settings().models["reviewer"]
         try:
             r = requests.post(
@@ -490,6 +531,7 @@ class ModelManager:
                 if m.get("key") == model_key and m.get("loaded_instances"):
                     log.info(f"[ModelManager] Confirmed loaded via key: {model_key}")
                     return
+            _model_swap_tick()
             interruptible_sleep(get_settings().model_load_poll_interval_s)
         raise ModelManagerError(
             f"Model {model_key} did not become ready within {get_settings().model_load_timeout_s}s"

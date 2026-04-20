@@ -43,6 +43,10 @@ from rich.console import Console
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
+from rich.align import Align
+from rich.columns import Columns
+from rich.console import Group
+from rich.panel import Panel
 
 from local_ai_agent_orchestrator import __version__
 from local_ai_agent_orchestrator.branding import DISPLAY as D
@@ -59,6 +63,14 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[()][AB012]|\x1b=|\x1b>")
 
 def get_unified_ui() -> Optional["UnifiedUI"]:
     return _active_ui
+
+
+def pilot_cancellable_phase_active() -> bool:
+    """True while pilot is inside an LLM request or processing that response's tools."""
+    ui = get_unified_ui()
+    if ui is None:
+        return False
+    return ui.is_pilot_cancellable_phase()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -263,6 +275,37 @@ def _esc_html(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _model_swap_mini_bar(si: int, width: int = 8) -> str:
+    """Indeterminate ASCII bar for plain-toolbar model swap feedback."""
+    if width < 3:
+        width = 3
+    span = 2
+    pos = (si * 2) % (width + span)
+    parts: list[str] = []
+    for i in range(width):
+        parts.append("#" if pos - span < i <= pos else "-")
+    return "[" + "".join(parts) + "]"
+
+
+def _model_swap_mini_bar_html(si: int, width: int = 8) -> str:
+    """Knight-rider style bar for prompt_toolkit HTML toolbar."""
+    if width < 3:
+        width = 3
+    span = 2
+    pos = (si * 2) % (width + span)
+    chunks: list[str] = []
+    for i in range(width):
+        filled = pos - span < i <= pos
+        ch = "█" if filled else "░"
+        style = "ansicyan" if filled else "ansibrightblack"
+        chunks.append(f"<{style}>{_esc_html(ch)}</{style}>")
+    return (
+        "<ansibrightblack>[</ansibrightblack>"
+        + "".join(chunks)
+        + "<ansibrightblack>]</ansibrightblack>"
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Layer 3 — ViewComposer
 # ─────────────────────────────────────────────────────────────────────────────
@@ -315,53 +358,92 @@ class ViewComposer:
 
     # ── renderable builders ─────────────────────────────────────────────────
 
+    def thinking_strip(self, lines: list[str]) -> list[Any]:
+        """Compact rolling panel for pilot / LLM thinking hints (compact mode)."""
+        if not lines:
+            return []
+        body = Text()
+        for ln in lines:
+            body.append(ln + "\n", style=D["TEXT_MUTED"])
+        panel = Panel(
+            body,
+            title="thinking",
+            border_style=D["PANEL_ELEVATED"],
+            width=max(44, min(self._caps.width - 2, 96)),
+            padding=(0, 1),
+        )
+        return [Text(""), panel, Text("")]
+
     def _banner(self) -> list[Any]:
-        w = self._caps.width
+        from local_ai_agent_orchestrator.settings import get_settings
+
+        w = max(60, self._caps.width)
+        s = get_settings()
         art = [
             " ██╗      █████╗  ██████╗ ",
             " ██║     ██╔══██╗██╔═══██╗",
             " ██║     ███████║██║   ██║",
             " ██║     ██╔══██║██║   ██║",
             " ███████╗██║  ██║╚██████╔╝",
-            " ╚══════╝╚═╝  ╚═╝ ╚═════╝",
+            " ╚══════╝╚═╝  ╚═╝ ╚═════╝ ",
         ]
         if self._caps.rich:
-            items: list[Any] = [Text("")]
-            items.append(Rule(style=D["AI_SPARK"]))
+            right_w = min(40, max(28, w // 3))
+            left_lines = Text()
             for ln in art:
-                t = Text(ln.center(w), style=f"bold {D['AI_SPARK_BRIGHT']}")
-                items.append(t)
-            items.append(Text(f"LAO  v{__version__}".center(w), style=f"bold {D['TEXT']}"))
-            items.append(
-                Text(
-                    "Local AI coding orchestrator — plan · run · inspect · chat".center(w),
-                    style=D["TEXT_MUTED"],
-                )
+                left_lines.append(ln + "\n", style=f"bold {D['AI_SPARK_BRIGHT']}")
+            left_lines.append("\n")
+            left_lines.append(f"LAO v{__version__}\n", style=f"bold {D['TEXT']}")
+            left_lines.append(
+                "Local AI coding orchestrator — plan · run · inspect · chat\n\n",
+                style=D["TEXT_MUTED"],
             )
-            items.append(Rule(style=D["PANEL_ELEVATED"]))
-            items.append(
-                Text(
-                    "  /help  /status  /resume  /clear  /exit  "
-                    "│  Enter send  │  Alt+Enter newline  │  Ctrl+O toggle trace",
-                    style=D["TEXT_MUTED"],
-                )
+            left_lines.append(
+                "/help  /status  /resume  /clear  /exit\n"
+                "Enter send  ·  Alt+Enter newline  ·  Ctrl+O trace\n",
+                style=D["TEXT_MUTED"],
             )
-            items.append(Rule(style=D["AI_SPARK"]))
-            items.append(Text(""))
-            return items
+            cfg_line = str(s.config_dir)
+            if len(cfg_line) > right_w + 8:
+                cfg_line = "…" + cfg_line[-(right_w + 4) :]
+            right_body = Text()
+            right_body.append("LAO workspace\n", style=f"bold {D['AI_SPARK_BRIGHT']}")
+            right_body.append("Config\n", style=D["TEXT_MUTED"])
+            right_body.append(cfg_line + "\n\n", style=D["TEXT"])
+            right_body.append("You are inside a LAO session.", style=D["TEXT_MUTED"])
+            right_panel = Panel(
+                right_body,
+                title="status",
+                border_style=D["AI_SPARK"],
+                width=right_w,
+                padding=(0, 1),
+            )
+            row = Columns(
+                [Align.left(Group(left_lines), vertical="top"), Align.right(right_panel)],
+                expand=True,
+                equal=False,
+            )
+            return [
+                Text(""),
+                Rule(style=D["AI_SPARK"]),
+                row,
+                Rule(style=D["PANEL_ELEVATED"]),
+                Text(""),
+            ]
 
         bar = self._SEP_HEAVY * min(w, 72)
-        lines: list[Any] = ["", bar]
+        lines_out: list[Any] = ["", bar]
         for ln in art:
-            lines.append(ln.center(72))
-        lines.append(f"LAO v{__version__}".center(72))
-        lines.append("Local AI coding orchestrator — plan · run · inspect · chat".center(72))
-        lines.append(bar)
-        lines.append("  /help  /status  /resume  /clear  /exit")
-        lines.append("  Enter send | Alt+Enter newline | Ctrl+O toggle trace")
-        lines.append(bar)
-        lines.append("")
-        return lines
+            lines_out.append(ln.rstrip())
+        lines_out.append(f"LAO v{__version__}")
+        lines_out.append("Local AI coding orchestrator — plan · run · inspect · chat")
+        lines_out.append(str(s.config_dir))
+        lines_out.append(bar)
+        lines_out.append("  /help  /status  /resume  /clear  /exit")
+        lines_out.append("  Enter send | Alt+Enter newline | Ctrl+O trace")
+        lines_out.append(bar)
+        lines_out.append("")
+        return lines_out
 
     def _user_msg(self, content: str) -> list[Any]:
         content = sanitize_for_terminal(content, width=self._caps.width - 8)
@@ -554,6 +636,7 @@ class TerminalShell:
         bus: RenderBus,
         *,
         history_path: Optional[Path] = None,
+        skip_initial_banner: bool = False,
     ) -> None:
         self._caps = caps
         self._composer = composer
@@ -574,6 +657,11 @@ class TerminalShell:
         self._patch_ctx: Optional[Any] = None
 
         self._last_ctrl_c: float = 0.0
+        self._skip_initial_banner = bool(skip_initial_banner)
+
+        # Model swap indicator (toolbar corner)
+        self._model_swap_label = ""
+        self._model_swap_spin = 0
 
         # Status bar state (written from any thread, read by toolbar callback)
         self._lock = threading.Lock()
@@ -586,6 +674,7 @@ class TerminalShell:
         # Activity ring buffers
         self._activity_compact: deque[str] = deque(maxlen=6)
         self._activity_full: deque[str] = deque(maxlen=80)
+        self._thinking_ring: deque[str] = deque(maxlen=5)
 
         self._session_start = time.monotonic()
 
@@ -594,7 +683,10 @@ class TerminalShell:
     def start(self) -> None:
         # Print banner BEFORE patch_stdout — writes directly to the real
         # terminal so Rich ANSI codes render correctly.
-        self._print_banner_direct()
+        if self._skip_initial_banner:
+            self._print_minimal_session_marker()
+        else:
+            self._print_banner_direct()
 
         # NOW start patch_stdout.  All subsequent Console output uses the
         # no_color body console, so no ANSI codes pass through the proxy.
@@ -624,6 +716,21 @@ class TerminalShell:
         for renderable in self._composer.compose(banner_event):
             direct.print(renderable)
 
+
+    def _print_minimal_session_marker(self) -> None:
+        """Single-line entry marker when the CLI already showed branding."""
+        line = f"LAO v{__version__} — session started  (/help for commands)"
+        if self._caps.rich:
+            direct = Console(
+                force_terminal=True,
+                highlight=False,
+                markup=False,
+                emoji=False,
+            )
+            direct.print(Text(line, style=D["TEXT_MUTED"]))
+        else:
+            print(line)
+
     def stop(self) -> None:
         self._bus.set_consumer(None)
         if self._patch_ctx is not None:
@@ -639,6 +746,31 @@ class TerminalShell:
         if event.kind == EventKind.BANNER:
             return  # Already rendered by _print_banner_direct
 
+        if not self._activity_expanded and event.kind in (
+            EventKind.TOOL_CALL,
+            EventKind.TOOL_RESULT,
+        ):
+            if event.kind == EventKind.TOOL_CALL:
+                n = sanitize_for_terminal(event.payload.get("name", ""))
+                self._activity_compact.append(f"▶ {n}")
+                self._activity_full.append(f"▶ {n}")
+            else:
+                n = sanitize_for_terminal(event.payload.get("name", ""))
+                first = sanitize_for_terminal(event.payload.get("result", "")).strip().split("\n")[0][:120]
+                self._activity_compact.append(f"{n}: {first}")
+                self._activity_full.append(f"{n}: {first}")
+            return
+
+        if event.kind == EventKind.THINKING and not self._activity_expanded:
+            hint = sanitize_for_terminal(event.payload.get("hint", ""), width=self._caps.width - 8)
+            if hint:
+                self._thinking_ring.append(hint)
+                self._activity_compact.append(f"… {hint}")
+                self._activity_full.append(f"… {hint}")
+            for r in self._composer.thinking_strip(list(self._thinking_ring)):
+                self._console.print(r)
+            return
+
         renderables = self._composer.compose(event)
         for r in renderables:
             self._console.print(r)
@@ -650,6 +782,31 @@ class TerminalShell:
                 self._activity_full.append(msg)
 
     # ── toolbar ──────────────────────────────────────────────────────────────
+
+    def set_model_swap_status(self, label: str) -> None:
+        with self._lock:
+            self._model_swap_label = (label or "").strip()
+            self._model_swap_spin = 0
+        self._invalidate_prompt_app()
+
+    def bump_model_swap_spinner(self) -> None:
+        with self._lock:
+            self._model_swap_spin += 1
+        self._invalidate_prompt_app()
+
+    def toggle_activity_expanded(self) -> None:
+        self._activity_expanded = not self._activity_expanded
+        self._invalidate_prompt_app()
+
+    def _invalidate_prompt_app(self) -> None:
+        try:
+            from prompt_toolkit.application import get_app
+
+            app = get_app()
+            if app is not None:
+                app.invalidate()
+        except Exception:
+            pass
 
     def _render_toolbar(self) -> Union[HTML, str]:
         with self._lock:
@@ -675,6 +832,13 @@ class TerminalShell:
                 parts.append(_trunc(memory, 28))
             parts.append(f"[{mode_hint}]")
             parts.append(elapsed_str)
+            spin_chars = "|/-\\"
+            with self._lock:
+                swap = self._model_swap_label
+                si = self._model_swap_spin
+            if swap:
+                parts.append(_model_swap_mini_bar(si))
+                parts.append(spin_chars[si % len(spin_chars)] + " " + _trunc(swap, 22))
             return " | ".join(parts)
 
         def _seg(s: str) -> str:
@@ -689,6 +853,20 @@ class TerminalShell:
             parts_html.append(f"<ansiyellow>{_seg(memory)}</ansiyellow>")
         parts_html.append(f"<ansibrightblack>[{mode_hint}]</ansibrightblack>")
         parts_html.append(f"<ansibrightblack>{elapsed_str}</ansibrightblack>")
+        spin_unicode = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        spin_ascii = "|/-\\"
+        with self._lock:
+            swap = self._model_swap_label
+            si = self._model_swap_spin
+        if swap:
+            seq = spin_unicode if self._caps.supports_unicode else spin_ascii
+            ch = seq[si % len(seq)]
+            parts_html.append(_model_swap_mini_bar_html(si))
+            parts_html.append(
+                "<ansibrightblack>·</ansibrightblack> "
+                f"<ansicyan>{_esc_html(ch)}</ansicyan> "
+                f"<ansibrightblack>{_esc_html(_trunc(swap, 22))}</ansibrightblack>"
+            )
         sep = " <ansibrightblack>·</ansibrightblack> "
         return HTML(sep.join(parts_html))
 
@@ -703,7 +881,7 @@ class TerminalShell:
 
         @kb.add("c-o")
         def _toggle(_event):
-            self._activity_expanded = not self._activity_expanded
+            self.toggle_activity_expanded()
             mode = "detailed trace" if self._activity_expanded else "compact"
             self._bus.put(RenderEvent(EventKind.INFO, {"msg": f"Activity view: {mode}"}))
 
@@ -923,7 +1101,9 @@ class UnifiedUI:
     callers (runner.py, cli.py, pilot.py) need zero changes.
     """
 
-    def __init__(self, *, history_path: Optional[Path] = None) -> None:
+    def __init__(
+        self, *, history_path: Optional[Path] = None, skip_initial_banner: bool = False
+    ) -> None:
         global _active_ui
         _active_ui = self
 
@@ -935,6 +1115,7 @@ class UnifiedUI:
             self._composer,
             self._bus,
             history_path=history_path,
+            skip_initial_banner=skip_initial_banner,
         )
 
         self._log_bridge: Optional[LogBridge] = None
@@ -946,6 +1127,18 @@ class UnifiedUI:
         self._plan = ""
         self._attempt = ""
         self._idle_hint = ""
+        self._pilot_onboarding_shown = False
+        self._pilot_phase_lock = threading.Lock()
+        self._pilot_cancellable_phase = False
+
+    def set_pilot_cancellable_phase(self, active: bool) -> None:
+        """Pilot sets this around chat.completions.create and tool execution for SIGINT routing."""
+        with self._pilot_phase_lock:
+            self._pilot_cancellable_phase = bool(active)
+
+    def is_pilot_cancellable_phase(self) -> bool:
+        with self._pilot_phase_lock:
+            return self._pilot_cancellable_phase
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -961,6 +1154,34 @@ class UnifiedUI:
 
     def set_queue_getter(self, fn: Callable[[], Any]) -> None:
         self._queue_ref = fn
+
+    def note_model_swap_progress(self, label: str) -> None:
+        self._shell.set_model_swap_status(label)
+
+    def tick_model_swap_spinner(self) -> None:
+        self._shell.bump_model_swap_spinner()
+
+    def show_pilot_onboarding_if_needed(self, queue: Any) -> None:
+        if self._pilot_onboarding_shown:
+            return
+        self._pilot_onboarding_shown = True
+        lines = [
+            "Pilot — you can chat, run tools, create plans, or type /resume for autopilot.",
+            "Try: continue an active plan, describe a new goal, or /status for the queue.",
+            "Diagnostics: /help  ·  exit: /exit or double Ctrl+C.",
+        ]
+        try:
+            stats = queue.get_stats()
+            plans = queue.get_plans()
+            if stats and any(v for v in stats.values()):
+                lines.insert(1, f"Queue snapshot: {', '.join(f'{k}={v}' for k, v in sorted(stats.items()) if v)}")
+            if plans:
+                active = [p for p in plans if p.get("status") != "completed"]
+                if active:
+                    lines.insert(1, f"Active plan: {active[-1].get('filename', '?')}")
+        except Exception:
+            pass
+        self.show_info("\n".join(lines))
 
     # ── logging bridge ───────────────────────────────────────────────────────
 
@@ -1055,9 +1276,7 @@ class UnifiedUI:
     # ── activity detail toggle (Ctrl+O) ──────────────────────────────────────
 
     def toggle_activity_detail(self) -> None:
-        # Delegated to TerminalShell key binding; this is a no-op façade kept
-        # for backward compat with any direct callers.
-        pass
+        self._shell.toggle_activity_expanded()
 
     # ── queue-aware reports ──────────────────────────────────────────────────
 

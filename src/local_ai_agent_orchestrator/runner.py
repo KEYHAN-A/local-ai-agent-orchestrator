@@ -15,7 +15,9 @@ from pathlib import Path
 from local_ai_agent_orchestrator import plan_git
 from local_ai_agent_orchestrator.interrupts import (
     interruptible_sleep,
+    pilot_round_cancel_pending,
     register_interrupt,
+    request_pilot_round_cancel,
     reset_interrupt_state,
     should_shutdown,
 )
@@ -35,7 +37,82 @@ from local_ai_agent_orchestrator.tools import use_plan_workspace
 
 log = logging.getLogger(__name__)
 
+# Set by CLI for bare-`lao` fast path so we do not paint the big banner twice.
+SKIP_INITIAL_UNIFIED_BANNER = False
+
+
+def set_skip_initial_unified_banner(value: bool) -> None:
+    """When True, the next UnifiedUI session skips the large ASCII banner."""
+    global SKIP_INITIAL_UNIFIED_BANNER
+    SKIP_INITIAL_UNIFIED_BANNER = bool(value)
+
+
 from local_ai_agent_orchestrator.unified_ui import apply_runner_context
+
+
+def _maybe_apply_critic_gate(mm: ModelManager, queue: TaskQueue, task) -> None:
+    """If the critic quorum is enabled and the task was just completed by the
+    reviewer, run the quorum and demote to rework when critics reject.
+    """
+    s = get_settings()
+    if not getattr(s, "critic_quorum_enabled", False):
+        return
+    fresh = queue.get_task(task.id)
+    if not fresh or fresh.status != "completed":
+        return
+    try:
+        from local_ai_agent_orchestrator.critic_quorum import review_task_with_critics
+
+        acceptance_summary = None
+        runs = queue.get_validation_runs(fresh.id)
+        accept_runs = [r for r in runs if r.get("kind") == "acceptance"]
+        if accept_runs:
+            acceptance_summary = "\n".join(
+                f"- rc={r.get('return_code')}: {r.get('command')}" for r in accept_runs[-6:]
+            )
+        aggregate = review_task_with_critics(
+            mm, queue, fresh, reviewer_verdict=True,
+            acceptance_summary=acceptance_summary,
+        )
+    except Exception as exc:
+        log.warning("[Critic] Quorum failed for task #%s: %s", fresh.id, exc)
+        return
+    if not aggregate:
+        return
+    if aggregate.get("verdict") == "rejected":
+        crit_findings = [
+            f for f in aggregate.get("findings", [])
+            if str(f.get("severity") or "").lower() in {"critical", "major", "blocker"}
+        ]
+        for f in crit_findings:
+            try:
+                queue.add_finding(
+                    fresh.id,
+                    source="critic_quorum",
+                    severity=str(f.get("severity") or "minor"),
+                    issue_class=str(f.get("issue_class") or "critic_issue"),
+                    message=str(f.get("message") or ""),
+                    file_path=f.get("file_path"),
+                    fix_hint=f.get("fix_hint"),
+                    analyzer_id="critic_quorum",
+                    analyzer_kind="llm",
+                    confidence=0.7,
+                )
+            except Exception:
+                pass
+        feedback_lines = [
+            f"Critic quorum rejected the task (agreement {aggregate['approve_count']}/"
+            f"{aggregate['n']} approve)."
+        ]
+        for f in crit_findings[:6]:
+            sev = str(f.get("severity") or "").lower() or "minor"
+            path = f.get("file_path") or "?"
+            feedback_lines.append(f"- [{sev}] {path}: {f.get('message')}")
+        feedback = "\n".join(feedback_lines)
+        queue.mark_rework(fresh.id, feedback)
+        log.info(
+            "[Critic] Demoted task #%s back to rework after quorum reject", fresh.id
+        )
 
 
 def _run_verifier_or_rework(queue: TaskQueue, task) -> bool:
@@ -65,6 +142,17 @@ def _run_verifier_or_rework(queue: TaskQueue, task) -> bool:
 
 
 def _signal_handler(sig, frame):
+    from local_ai_agent_orchestrator.unified_ui import get_unified_ui, pilot_cancellable_phase_active
+
+    if get_unified_ui() is not None and pilot_cancellable_phase_active():
+        if not pilot_round_cancel_pending():
+            request_pilot_round_cancel()
+            log.info(
+                "\nCancelled current step (Ctrl+C). "
+                "Stopping after this request returns; press Ctrl+C again to exit LAO."
+            )
+            return
+
     count = register_interrupt()
     if count <= 1:
         log.info("\nShutdown requested. Finishing current task...")
@@ -88,6 +176,7 @@ def run_factory(
 ):
     s = get_settings()
     queue.recover_interrupted()
+    tui_pilot_before_queue = bool(use_tui and s.pilot_mode_enabled)
 
     while not should_shutdown():
         new_plans = _scan_for_new_plans(queue)
@@ -114,9 +203,22 @@ def run_factory(
                     )
                     analyst_phase(mm, queue, plan_id, plan_text, ws)
                 architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
+                _maybe_run_contract_author(mm, queue, plan_id, plan_file.name)
             except Exception as e:
                 log.error(f"Architect phase failed for {plan_file.name}: {e}")
                 continue
+
+        if tui_pilot_before_queue:
+            tui_pilot_before_queue = False
+            from local_ai_agent_orchestrator.pilot import PilotResult
+
+            result = _enter_pilot_mode(
+                mm, queue, use_tui=use_tui, ui=ui, cold_session=True
+            )
+            if result == PilotResult.EXIT:
+                break
+            if result == PilotResult.RESUME_PIPELINE:
+                reset_interrupt_state()
 
         processed = _process_queue(mm, queue)
         _mark_terminal_plans_completed(queue)
@@ -173,6 +275,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
                     try:
                         with use_plan_workspace(queue, task.plan_id):
                             reviewer_phase(mm, queue, task)
+                        _maybe_apply_critic_gate(mm, queue, task)
                         processed += 1
                     except Exception as e:
                         log.error(f"Reviewer failed on task #{task.id}: {e}")
@@ -222,6 +325,7 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
             try:
                 with use_plan_workspace(queue, task.plan_id):
                     reviewer_phase(mm, queue, task)
+                _maybe_apply_critic_gate(mm, queue, task)
                 processed += 1
             except Exception as e:
                 log.error(f"Reviewer failed on task #{task.id}: {e}")
@@ -239,6 +343,53 @@ def _process_queue(mm: ModelManager, queue: TaskQueue) -> int:
         break
 
     return processed
+
+
+def _maybe_run_contract_author(
+    mm: ModelManager, queue: TaskQueue, plan_id: str, plan_filename: str
+) -> None:
+    """Run Contract Author for new tasks that declared acceptance_ids.
+
+    Cheap & safe: skips silently when disabled or when no task in this plan
+    declares any acceptance_ids (legacy plans).
+    """
+    s = get_settings()
+    if not getattr(s, "contract_author_enabled", True):
+        return
+    tasks = queue.get_plan_tasks(plan_id)
+    eligible = [
+        t for t in tasks
+        if isinstance(t.acceptance, dict)
+        and t.acceptance.get("acceptance_ids")
+        and not t.acceptance.get("commands")
+    ]
+    if not eligible:
+        return
+    try:
+        from local_ai_agent_orchestrator.contract_author import author_contracts_for_plan
+
+        apply_runner_context(
+            phase="Contract Author",
+            plan=plan_filename,
+            task=f"Drafting tests for {len(eligible)} task(s)",
+        )
+        spec_path = queue.workspace_for_plan(plan_id) / "SPEC.md"
+        spec_excerpt = None
+        if spec_path.exists():
+            try:
+                spec_excerpt = spec_path.read_text(encoding="utf-8")[:4000]
+            except Exception:
+                spec_excerpt = None
+        written = author_contracts_for_plan(
+            mm, queue, plan_id, spec_excerpt=spec_excerpt
+        )
+        log.info(
+            "[ContractAuthor] Drafted acceptance for %d task(s) in plan %s",
+            written,
+            plan_id,
+        )
+    except Exception as exc:
+        log.warning("[ContractAuthor] phase failed for plan %s: %s", plan_id, exc)
 
 
 def _scan_for_new_plans(queue: TaskQueue) -> list[tuple[Path, str, str]]:
@@ -339,6 +490,7 @@ def _enter_pilot_mode(
     *,
     use_tui: bool = False,
     ui: object | None = None,
+    cold_session: bool = False,
 ) -> "PilotResult":
     """Transition from autopilot to pilot mode. Returns PilotResult.
 
@@ -353,13 +505,14 @@ def _enter_pilot_mode(
         from local_ai_agent_orchestrator.unified_ui import UnifiedUI
         if isinstance(ui, UnifiedUI):
             ui.update_status(phase="Pilot", task="Interactive chat", idle_hint="")
-            ui.show_transition("Pipeline", "Pilot")
+            ui.show_transition("LAO" if cold_session else "Pipeline", "Pilot")
 
             report_rows = ui.build_idle_report()
             if report_rows:
                 ui.show_report("Pipeline summary", report_rows)
             ui.snapshot_stats()
             ui.bell()
+            ui.show_pilot_onboarding_if_needed(queue)
 
             result = _run_pilot_with_unified_ui(mm, queue, ui)
 
@@ -468,12 +621,67 @@ def _mark_terminal_plans_completed(queue: TaskQueue):
     for p in queue.get_plans():
         if p.get("status") == "completed":
             continue
-        if queue.is_plan_closure_satisfied(
-            p["id"],
+        plan_id = p["id"]
+        if not queue.is_plan_closure_satisfied(
+            plan_id,
             strict_adherence=bool(getattr(s, "strict_adherence", False)),
             allowed_statuses=set(getattr(s, "strict_closure_allowed_statuses", ["validated"])),
         ):
-            queue.mark_plan_completed(p["id"])
+            continue
+
+        from local_ai_agent_orchestrator.done_gate import evaluate_plan_done
+
+        tasks = queue.get_plan_tasks(plan_id)
+        has_contracts = any(
+            isinstance(t.acceptance, dict)
+            and (t.acceptance.get("commands") or t.acceptance.get("acceptance_ids"))
+            for t in tasks
+        )
+        if not has_contracts:
+            queue.mark_plan_completed(plan_id)
+            _maybe_run_plan_integrator(queue, plan_id)
+            continue
+        try:
+            workspace = queue.workspace_for_plan(plan_id)
+            spec_path = workspace / "SPEC.md"
+            report = evaluate_plan_done(
+                queue, plan_id, workspace,
+                run_acceptance=True,
+                spec_doc_path=spec_path if spec_path.exists() else None,
+            )
+        except Exception as exc:
+            log.warning("[DONE] Gate evaluation failed for %s: %s", plan_id, exc)
+            queue.mark_plan_completed(plan_id)
+            _maybe_run_plan_integrator(queue, plan_id)
+            continue
+        if report.get("plan_done"):
+            queue.upsert_plan_done_gate(plan_id, "passed", report)
+            queue.mark_plan_completed(plan_id)
+            log.info("[DONE] Plan %s passed the DONE gate", plan_id)
+            _maybe_run_plan_integrator(queue, plan_id)
+        else:
+            queue.upsert_plan_done_gate(plan_id, "failed", report)
+            log.info(
+                "[DONE] Plan %s blocked: %s",
+                plan_id,
+                "; ".join(report.get("reasons") or []) or "unknown",
+            )
+
+
+def _maybe_run_plan_integrator(queue: TaskQueue, plan_id: str) -> None:
+    """Run the Plan Integrator (regression sweep + decision log) when enabled."""
+    s = get_settings()
+    if not getattr(s, "plan_integrator_enabled", True):
+        return
+    try:
+        from local_ai_agent_orchestrator.plan_integrator import integrate_plan
+
+        workspace = queue.workspace_for_plan(plan_id)
+        report = integrate_plan(queue, plan_id, workspace)
+        if report.get("regression", {}).get("passed") is False:
+            log.warning("[Integrator] Plan %s shows regressions after DONE", plan_id)
+    except Exception as exc:
+        log.warning("[Integrator] failed for plan %s: %s", plan_id, exc)
 
 
 def print_status(queue: TaskQueue):
@@ -545,12 +753,24 @@ def health_check(mm: ModelManager) -> bool:
     if s.total_ram_gb:
         print(f"\n  Configured RAM: {s.total_ram_gb} GB (for your reference / future tuning)")
 
-    guardrails_ok = mm.check_guardrails()
-    print(
-        f"\n  Guardrails: {'OK (disabled or permissive)' if guardrails_ok else 'WARNING -- may block large models'}"
-    )
-    if not guardrails_ok:
-        print("  Fix: LM Studio > Developer > Server Settings > Model Loading Guardrails > Off")
+    import os
+
+    deep = os.getenv("LAO_HEALTH_GUARD_LOAD", "").strip().lower() in ("1", "true", "yes", "on")
+    if deep:
+        guardrails_ok = mm.check_guardrails_load_probe()
+        print(
+            f"\n  Guardrails (load probe): "
+            f"{'OK (disabled or permissive)' if guardrails_ok else 'WARNING -- may block large models'}"
+        )
+        if not guardrails_ok:
+            print(
+                "  Fix: LM Studio > Developer > Server Settings > Model Loading Guardrails > Off"
+            )
+    else:
+        print(
+            "\n  Guardrails: quick mode (no model load). "
+            "Set LAO_HEALTH_GUARD_LOAD=1 before `lao health` for a blocking probe."
+        )
 
     print(f"{'='*60}\n")
     return True
@@ -561,6 +781,7 @@ def run_entry(
     plan: str | None = None,
     single_run: bool = False,
     use_tui: bool = False,
+    skip_initial_banner: bool = False,
 ) -> bool:
     """Main entry after CLI parsed args and init_settings() ran."""
     reset_interrupt_state()
@@ -572,7 +793,10 @@ def run_entry(
         from local_ai_agent_orchestrator.unified_ui import UnifiedUI
 
         history_path = s.config_dir / ".lao" / "chat_history"
-        ui = UnifiedUI(history_path=history_path)
+        global SKIP_INITIAL_UNIFIED_BANNER
+        banner_skip = bool(skip_initial_banner or SKIP_INITIAL_UNIFIED_BANNER)
+        SKIP_INITIAL_UNIFIED_BANNER = False
+        ui = UnifiedUI(history_path=history_path, skip_initial_banner=banner_skip)
         ui.start()
     else:
         logging.basicConfig(
@@ -631,11 +855,11 @@ def run_entry(
             log.error("Tip: list available keys with `lms ls` or `lao health`.")
             return False
 
-        if not mm.check_guardrails():
-            log.warning(
-                "LM Studio resource guardrails may block large models. "
-                "Developer tab > Server Settings > Model Loading Guardrails > Off."
-            )
+        log.info(
+            "Skipping guardrail load probe at startup (avoids loading the reviewer "
+            "model). If large models fail to load, run `lao doctor` or check LM "
+            "Studio > Developer > Model Loading Guardrails."
+        )
 
         if s.total_ram_gb:
             log.info(f"Configured total RAM: {s.total_ram_gb} GB")
@@ -647,6 +871,13 @@ def run_entry(
         log.info(f"  Plans: {s.plans_dir}")
         log.info(f"  Database: {s.db_path}")
         log.info(f"{'='*60}")
+
+        if s.pilot_mode_enabled and use_tui:
+            try:
+                mm.ensure_loaded("pilot")
+                apply_runner_context(phase="Pilot", task="Session ready", idle_hint="")
+            except Exception as exc:
+                log.warning("Pilot preload skipped: %s", exc)
 
         if plan:
             try:
@@ -676,6 +907,7 @@ def run_entry(
                     task="Decomposing plan",
                 )
                 architect_phase(mm, queue, plan_id, plan_text, plan_file.name)
+                _maybe_run_contract_author(mm, queue, plan_id, plan_file.name)
 
         if s.architect_only:
             log.info("Architect-only mode enabled; skipping coder/reviewer processing.")

@@ -174,6 +174,13 @@ CREATE TABLE IF NOT EXISTS memory_facts (
     UNIQUE(scope, fact_signature)
 );
 
+CREATE TABLE IF NOT EXISTS plan_done_gate (
+    plan_id TEXT PRIMARY KEY REFERENCES plans(id),
+    status TEXT NOT NULL DEFAULT 'pending',
+    report_json TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS tool_audit (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id INTEGER,
@@ -220,6 +227,9 @@ class MicroTask:
     next_eligible_at: Optional[str] = None
     escalation_reason: Optional[str] = None
     priority: int = 0
+    acceptance: Optional[dict] = None
+    risk: Optional[str] = None
+    inner_repairs: int = 0
 
 
 class TaskQueue:
@@ -305,6 +315,16 @@ class TaskQueue:
             self._conn.execute("ALTER TABLE task_findings ADD COLUMN confidence REAL")
         if "code_signature" not in task_cols:
             self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN code_signature TEXT")
+        if "acceptance_json" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN acceptance_json TEXT")
+        if "inner_repairs" not in task_cols:
+            self._conn.execute(
+                "ALTER TABLE micro_tasks ADD COLUMN inner_repairs INTEGER NOT NULL DEFAULT 0"
+            )
+        if "critic_votes_json" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN critic_votes_json TEXT")
+        if "risk" not in task_cols:
+            self._conn.execute("ALTER TABLE micro_tasks ADD COLUMN risk TEXT")
 
     # ── Plan Management ──────────────────────────────────────────────
 
@@ -512,10 +532,19 @@ class TaskQueue:
                                 t.get("title", "Untitled"),
                                 d,
                             )
+                acceptance_payload = t.get("acceptance")
+                if acceptance_payload is not None and not isinstance(acceptance_payload, dict):
+                    acceptance_payload = None
+                risk_value = t.get("risk")
+                risk_value = (
+                    str(risk_value).strip().lower()
+                    if isinstance(risk_value, str) and risk_value.strip()
+                    else None
+                )
                 self._conn.execute(
                     """INSERT INTO micro_tasks
-                       (plan_id, title, description, file_paths, dependencies, priority, phase_name, deliverable_ids)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (plan_id, title, description, file_paths, dependencies, priority, phase_name, deliverable_ids, acceptance_json, risk)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         plan_id,
                         t["title"],
@@ -525,6 +554,8 @@ class TaskQueue:
                         i,
                         (t.get("phase") or "").strip() or None,
                         json.dumps(t.get("deliverable_ids", [])),
+                        json.dumps(acceptance_payload) if acceptance_payload is not None else None,
+                        risk_value,
                     ),
                 )
             self._conn.execute("COMMIT")
@@ -818,6 +849,115 @@ class TaskQueue:
             (plan_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── Acceptance / DONE gate ───────────────────────────────────────
+
+    def set_task_acceptance(self, task_id: int, payload: dict | None) -> None:
+        """Persist the acceptance contract for a task. ``None`` clears it."""
+        if payload is None:
+            self._conn.execute(
+                "UPDATE micro_tasks SET acceptance_json=NULL WHERE id=?", (task_id,)
+            )
+            return
+        self._conn.execute(
+            "UPDATE micro_tasks SET acceptance_json=? WHERE id=?",
+            (json.dumps(payload), task_id),
+        )
+
+    def get_task_acceptance(self, task_id: int) -> dict | None:
+        row = self._conn.execute(
+            "SELECT acceptance_json FROM micro_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        if not row or not row["acceptance_json"]:
+            return None
+        try:
+            payload = json.loads(row["acceptance_json"])
+            return payload if isinstance(payload, dict) else None
+        except Exception:
+            return None
+
+    def set_task_risk(self, task_id: int, risk: str | None) -> None:
+        self._conn.execute(
+            "UPDATE micro_tasks SET risk=? WHERE id=?", ((risk or None), task_id)
+        )
+
+    def get_task_risk(self, task_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT risk FROM micro_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        return row["risk"] if row else None
+
+    def set_task_critic_votes(self, task_id: int, payload: dict | None) -> None:
+        if payload is None:
+            self._conn.execute(
+                "UPDATE micro_tasks SET critic_votes_json=NULL WHERE id=?", (task_id,)
+            )
+            return
+        self._conn.execute(
+            "UPDATE micro_tasks SET critic_votes_json=? WHERE id=?",
+            (json.dumps(payload), task_id),
+        )
+
+    def get_task_critic_votes(self, task_id: int) -> dict | None:
+        row = self._conn.execute(
+            "SELECT critic_votes_json FROM micro_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        if not row or not row["critic_votes_json"]:
+            return None
+        try:
+            payload = json.loads(row["critic_votes_json"])
+            return payload if isinstance(payload, dict) else None
+        except Exception:
+            return None
+
+    def increment_inner_repairs(self, task_id: int) -> int:
+        self._conn.execute(
+            "UPDATE micro_tasks SET inner_repairs = COALESCE(inner_repairs, 0) + 1 WHERE id=?",
+            (task_id,),
+        )
+        row = self._conn.execute(
+            "SELECT inner_repairs FROM micro_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        return int(row["inner_repairs"]) if row else 0
+
+    def reset_inner_repairs(self, task_id: int) -> None:
+        self._conn.execute(
+            "UPDATE micro_tasks SET inner_repairs = 0 WHERE id=?", (task_id,)
+        )
+
+    def get_inner_repairs(self, task_id: int) -> int:
+        row = self._conn.execute(
+            "SELECT inner_repairs FROM micro_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        return int(row["inner_repairs"]) if row and row["inner_repairs"] is not None else 0
+
+    def upsert_plan_done_gate(self, plan_id: str, status: str, report: dict) -> None:
+        self._conn.execute(
+            """INSERT INTO plan_done_gate (plan_id, status, report_json, updated_at)
+               VALUES (?, ?, ?, datetime('now'))
+               ON CONFLICT(plan_id) DO UPDATE
+                 SET status=excluded.status,
+                     report_json=excluded.report_json,
+                     updated_at=datetime('now')""",
+            (plan_id, status, json.dumps(report)),
+        )
+
+    def get_plan_done_gate(self, plan_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT status, report_json, updated_at FROM plan_done_gate WHERE plan_id=?",
+            (plan_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            report = json.loads(row["report_json"]) if row["report_json"] else {}
+        except Exception:
+            report = {}
+        return {
+            "status": row["status"],
+            "report": report,
+            "updated_at": row["updated_at"],
+        }
 
     # ── Run Logging ──────────────────────────────────────────────────
 
@@ -1123,6 +1263,24 @@ class TaskQueue:
     # ── Helpers ──────────────────────────────────────────────────────
 
     def _row_to_task(self, row: sqlite3.Row) -> MicroTask:
+        keys = row.keys() if hasattr(row, "keys") else []
+        acceptance = None
+        risk = None
+        inner_repairs = 0
+        if "acceptance_json" in keys and row["acceptance_json"]:
+            try:
+                payload = json.loads(row["acceptance_json"])
+                if isinstance(payload, dict):
+                    acceptance = payload
+            except Exception:
+                acceptance = None
+        if "risk" in keys and row["risk"]:
+            risk = row["risk"]
+        if "inner_repairs" in keys and row["inner_repairs"] is not None:
+            try:
+                inner_repairs = int(row["inner_repairs"])
+            except (TypeError, ValueError):
+                inner_repairs = 0
         return MicroTask(
             id=row["id"],
             plan_id=row["plan_id"],
@@ -1141,6 +1299,9 @@ class TaskQueue:
             next_eligible_at=row["next_eligible_at"],
             escalation_reason=row["escalation_reason"],
             priority=row["priority"],
+            acceptance=acceptance,
+            risk=risk,
+            inner_repairs=inner_repairs,
         )
 
     def close(self):

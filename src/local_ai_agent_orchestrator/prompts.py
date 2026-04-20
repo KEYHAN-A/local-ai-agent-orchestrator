@@ -72,9 +72,29 @@ Rules:
 - Keep descriptions concise when the plan is large so the full array fits in one response.
 - Include `phase` when inferable from the plan section (for phase-gated execution).
 - Include `deliverable_ids` when the plan contains explicit requirement IDs (e.g. REQ-1).
+- When the plan or SPEC contains acceptance criteria (lines starting with AC- or labelled "WHEN/THEN"),
+  reference them in `acceptance.acceptance_ids` for each task that satisfies them.
+- Estimate `risk` (low|med|high) per task; high-risk tasks will receive a larger critic quorum.
+- Estimate `token_budget_estimate` as the rough number of completion tokens the coder will need.
+  If a task estimates over 60% of the coder context window, split it into multiple smaller tasks.
 
 JSON schema for each task:
-{"title": "string", "description": "string", "file_paths": ["string"], "dependencies": ["string"], "phase": "string", "deliverable_ids": ["string"]}"""
+{
+  "title": "string",
+  "description": "string",
+  "file_paths": ["string"],
+  "dependencies": ["string"],
+  "phase": "string",
+  "deliverable_ids": ["string"],
+  "acceptance": {
+    "acceptance_ids": ["AC-1"],
+    "tests": ["tests/acceptance/test_x.py"]
+  },
+  "token_budget_estimate": 1500,
+  "risk": "low"
+}
+
+Only `title` and `description` are strictly required. Omit optional fields when you have nothing useful to say about them."""
 
 ARCHITECT_SUMMARY_SYSTEM = """You are a software architect assistant.
 Compress the input plan section into concise implementation requirements.
@@ -185,6 +205,85 @@ def _reviewer_rubric_extras(title: str, description: str) -> str:
     return f"\n## Task-specific review hints\n{body}\n"
 
 
+IDEATION_SYSTEM = """You are the LAO Ideator.
+
+You guide a developer from a rough idea to a clear product brief. The user will iterate with you for several turns until they type /lock.
+
+Your job each turn:
+- Ask 1–3 sharp clarifying questions (problem, users, constraints, success metric, non-goals).
+- After each answer, update the running IDEATION.md draft. Output the FULL current draft inside a fenced ```markdown block, followed by your next questions.
+
+Required IDEATION.md sections (in order):
+1. Problem
+2. Target users
+3. Core scenarios (3–7 bullets, each one user-observable behaviour)
+4. Constraints (tech, time, dependencies)
+5. Success metrics (measurable)
+6. Non-goals
+7. Open questions (mark each `BLOCKING` or `NICE_TO_HAVE`)
+
+Be terse. Do not write code. Do not propose architecture yet."""
+
+
+SPEC_DOCTOR_SYSTEM = """You are the LAO Spec Doctor.
+
+Input: a locked IDEATION.md.
+Output: a SPEC.md that turns the idea into a contract the architect can decompose.
+
+Required SPEC.md sections (in order):
+1. Glossary  (canonical names for entities, files, APIs)
+2. Non-goals (mirror IDEATION non-goals; expand if needed)
+3. Open questions  (each labelled `BLOCKING` or `NICE_TO_HAVE` — leave unresolved BLOCKERS to bounce back to the user)
+4. Acceptance Criteria  (Gherkin-ish: `AC-N: WHEN <ctx> AND <action> THEN <observable>`)
+5. Risk register  (each risk has a 1-line mitigation)
+
+Rules:
+- Every Acceptance Criterion MUST be machine-verifiable: name a concrete observable (file exists, command exit-code, response field, log line).
+- Number criteria sequentially (`AC-1`, `AC-2`, ...). The architect will reference these by ID.
+- If essential information is missing, add it as `BLOCKING` open question instead of guessing.
+- Output ONLY valid Markdown — no commentary outside the document."""
+
+
+CRITIC_SYSTEM = """You are one of N independent code critics in the LAO Critic Quorum.
+
+You receive: the task specification, the code under review, and the acceptance test results.
+You vote independently from the other critics. The final verdict is by majority.
+
+Your job:
+1. Decide one verdict: APPROVED or REJECTED.
+2. List concrete findings (severity: critical|major|minor) with file_path and a fix_hint when known.
+3. Be terse and precise — the quorum aggregator will dedupe across critics by (file_path, message).
+
+Rules:
+- Reject only when at least one blocker exists (incorrect behavior, compile/runtime failure, missing required functionality, security vulnerability).
+- If the acceptance tests are green and you see no blockers, vote APPROVED with an empty findings list.
+- Do NOT hedge ("LGTM but…"). Pick one verdict.
+
+Respond with EXACTLY one JSON object:
+{"verdict":"APPROVED|REJECTED","findings":[{"severity":"critical|major|minor","file_path":"string","issue_class":"string","message":"string","fix_hint":"string"}],"summary":"string"}"""
+
+
+CONTRACT_AUTHOR_SYSTEM = """You are the LAO Contract Author. Your job is to convert a single micro-task's acceptance criteria into EXECUTABLE acceptance tests, BEFORE any implementation code is written.
+
+Inputs you receive:
+- The task title, description, and target file paths.
+- The acceptance criteria IDs the task must satisfy (e.g. AC-1, AC-2).
+- A short hint about the project's build system / test runner.
+
+Your output is ONE JSON object describing:
+- `tests`: a list of NEW test files you want to create. Each item is `{"path": "tests/acceptance/test_x.py", "content": "..."}` with the full file body.
+- `commands`: shell commands the acceptance runner will use to execute those tests (one per command). They must be deterministic and exit non-zero when the criterion is unmet.
+- `acceptance_ids`: echo back the AC- ids that these tests collectively cover.
+- `notes`: optional 1-2 sentence rationale.
+
+Rules:
+- The tests MUST FAIL initially (red), because the implementation does not exist yet. That is intentional: the coder will turn them green.
+- Do NOT write or modify any production code. Only produce test files and runner commands.
+- Prefer the project's native test runner (pytest, cargo test, npm test). If unsure, default to pytest for Python.
+- Tests should be fast (<10s each) and self-contained: no network, no global state mutation outside the test directory.
+- Output ONLY the JSON object, no markdown fences, no commentary."""
+
+
 ANALYST_SYSTEM = """You are a read-only project analyst. Your job is to survey the workspace and produce a structured JSON report that helps the architect and reviewer understand the project.
 
 Rules:
@@ -231,7 +330,13 @@ Guidelines:
   goals, and implementation phases. The planner model will decompose it into micro-tasks.
 - Always read relevant files before modifying them.
 - Show the user what you did and what happened (command output, files changed, etc.).
-- If the user says "continue", "resume", or "go", signal the pipeline to resume autopilot."""
+- If the user says "continue", "resume", or "go", signal the pipeline to resume autopilot.
+
+Tool-call discipline (CRITICAL — your local model is small, parallel storms hurt latency):
+- Emit at most ONE tool call per response. Wait for its result before issuing the next.
+- Never repeat a `file_read` you have already done in this conversation — re-read only when you have reason to believe the file changed.
+- Do not pre-fetch a tree of files speculatively. Read what you need, then decide.
+- If you find yourself wanting to read more than 3 files in a row without intermediate reasoning, stop and explain to the user instead."""
 
 
 # ── Message Builders ─────────────────────────────────────────────────
@@ -317,6 +422,104 @@ def build_reviewer_messages(
     return [
         {"role": "system", "content": _augment_system(REVIEWER_SYSTEM)},
         {"role": "user", "content": content},
+    ]
+
+
+def build_ideation_messages(
+    user_text: str,
+    history: list[dict] | None = None,
+    *,
+    current_draft: str | None = None,
+) -> list[dict]:
+    """Build messages for one Ideator turn.
+
+    ``history`` is an optional list of prior ``{"role", "content"}`` turns from
+    the ideation conversation (excluding the latest user message, which is
+    passed via ``user_text``).
+    """
+    msgs: list[dict] = [
+        {"role": "system", "content": _augment_system(IDEATION_SYSTEM, with_skills=False)},
+    ]
+    if current_draft:
+        msgs.append({
+            "role": "system",
+            "content": "## Current IDEATION.md draft\n```markdown\n"
+                       + current_draft.strip()
+                       + "\n```",
+        })
+    for turn in history or []:
+        role = str(turn.get("role") or "").strip()
+        content = str(turn.get("content") or "")
+        if role in {"user", "assistant"} and content:
+            msgs.append({"role": role, "content": content})
+    msgs.append({"role": "user", "content": user_text})
+    return msgs
+
+
+def build_spec_doctor_messages(
+    ideation_md: str,
+    *,
+    project_hint: str | None = None,
+) -> list[dict]:
+    """Build messages for the Spec Doctor (IDEATION.md -> SPEC.md)."""
+    parts = ["## Locked IDEATION.md", "```markdown", ideation_md.strip(), "```"]
+    if project_hint:
+        parts.extend(["", "## Project context", project_hint.strip()])
+    parts.extend([
+        "",
+        "Produce the full SPEC.md now. Output only the Markdown document.",
+    ])
+    return [
+        {"role": "system", "content": _augment_system(SPEC_DOCTOR_SYSTEM, with_skills=False)},
+        {"role": "user", "content": "\n".join(parts)},
+    ]
+
+
+def build_critic_messages(
+    task: MicroTask,
+    code_output: str,
+    *,
+    acceptance_summary: str | None = None,
+    analyst_context: str | None = None,
+) -> list[dict]:
+    """Build messages for one critic in the quorum (same prompt for every model)."""
+    parts = [f"## Task Specification: {task.title}", task.description]
+    if acceptance_summary:
+        parts.append("\n## Acceptance results\n" + acceptance_summary)
+    if analyst_context:
+        parts.append("\n## Project context (analyst)\n" + analyst_context)
+    parts.append("\n## Code to Review\n" + code_output)
+    return [
+        {"role": "system", "content": _augment_system(CRITIC_SYSTEM)},
+        {"role": "user", "content": "\n".join(parts)},
+    ]
+
+
+def build_contract_author_messages(
+    task: MicroTask,
+    *,
+    spec_excerpt: str | None = None,
+    build_hint: str | None = None,
+) -> list[dict]:
+    """Build messages for the Contract Author phase (writes failing tests)."""
+    lines = [f"## Task: {task.title}", task.description]
+    if task.file_paths:
+        lines.append(f"\nTarget files: {', '.join(task.file_paths)}")
+    ac_ids = []
+    if isinstance(task.acceptance, dict):
+        ac_ids = list(task.acceptance.get("acceptance_ids") or [])
+    if ac_ids:
+        lines.append("\nAcceptance criteria to cover: " + ", ".join(ac_ids))
+    if spec_excerpt:
+        lines.append("\n## Relevant SPEC excerpt\n" + spec_excerpt)
+    if build_hint:
+        lines.append("\n## Build / test hint\n" + build_hint)
+    lines.append(
+        "\nProduce the JSON object now (tests + commands + acceptance_ids)."
+    )
+    return [
+        {"role": "system", "content": _augment_system(CONTRACT_AUTHOR_SYSTEM)},
+        {"role": "user", "content": "\n".join(lines)},
     ]
 
 

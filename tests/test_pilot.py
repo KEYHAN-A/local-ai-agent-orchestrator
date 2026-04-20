@@ -6,6 +6,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from local_ai_agent_orchestrator.pilot import PilotAgent, PilotResult
@@ -400,6 +401,31 @@ class TestPilotIntentDetection(unittest.TestCase):
         result = agent._detect_project_intent("what is the weather like?")
         self.assertIsNone(result)
 
+
+    def test_no_intent_project_source_phrase(self):
+        agent = self._agent()
+        msg = (
+            "let's create a new project, I wanna create a powerful tool with Rust "
+            "that would crawl a project source code folder"
+        )
+        self.assertIsNone(agent._detect_project_intent(msg))
+
+    def test_no_intent_continue_implementing_the_plan(self):
+        agent = self._agent()
+        self.assertIsNone(agent._detect_project_intent("continue implementing the plan"))
+
+    def test_no_intent_new_project_phrase(self):
+        agent = self._agent()
+        self.assertIsNone(agent._detect_project_intent("create a new project for analytics"))
+
+
+    def test_no_intent_project_in_language_rust(self):
+        agent = self._agent()
+        msg = (
+            "we had a plan here for a context crawler project in rust"
+        )
+        self.assertIsNone(agent._detect_project_intent(msg))
+
     def test_no_intent_for_simple_slash(self):
         """A single / without a path should not trigger intent detection."""
         agent = self._agent()
@@ -515,6 +541,105 @@ class TestPilotConversationPersistence(unittest.TestCase):
         self.assertNotEqual(s1, s2)
         history = self.queue.get_pilot_history()
         self.assertEqual(len(history), 0)
+
+
+def _fake_tool_call(name: str, args_json: str, tc_id: str = "1") -> SimpleNamespace:
+    return SimpleNamespace(
+        id=tc_id,
+        function=SimpleNamespace(name=name, arguments=args_json),
+    )
+
+
+class TestPilotToolCallCap(unittest.TestCase):
+    def test_cap_dedupes_identical_calls(self):
+        from local_ai_agent_orchestrator.pilot import _cap_pilot_tool_calls
+
+        path = '{"path": "same.md"}'
+        tools = [_fake_tool_call("file_read", path, str(i)) for i in range(20)]
+        capped = _cap_pilot_tool_calls(tools, max_n=10)
+        self.assertEqual(len(capped), 1)
+
+    def test_cap_truncates_unique_calls(self):
+        from local_ai_agent_orchestrator.pilot import _cap_pilot_tool_calls
+
+        tools = [
+            _fake_tool_call("file_read", '{"path": "f%d.md"}' % i, str(i)) for i in range(50)
+        ]
+        capped = _cap_pilot_tool_calls(tools, max_n=8)
+        self.assertEqual(len(capped), 8)
+
+
+class TestPilotParallelToolCallsDisabled(unittest.TestCase):
+    """The pilot must request `parallel_tool_calls=False` so the model is
+    forced to emit one tool call per response (preventing in-response
+    file_read storms from small models like Gemma)."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
+        self.queue = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        self.mm = MagicMock()
+        self.mm.ensure_loaded.return_value = "test-model"
+
+    def tearDown(self):
+        reset_settings_for_tests()
+        self._td.cleanup()
+
+    def test_chat_completion_called_with_parallel_tool_calls_false(self):
+        agent = PilotAgent(self.mm, self.queue, on_assistant_message=lambda m: None)
+        # Build a fake response with no tool_calls so the loop exits after 1 round.
+        fake_msg = SimpleNamespace(
+            tool_calls=None,
+            content="ok",
+            role="assistant",
+        )
+        fake_response = SimpleNamespace(
+            choices=[SimpleNamespace(message=fake_msg, finish_reason="stop")],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        )
+        client = MagicMock()
+        client.chat.completions.create.return_value = fake_response
+        cfg = SimpleNamespace(max_completion=512)
+
+        agent._tool_loop(client, "test-model", cfg, max_rounds=1)
+
+        self.assertTrue(client.chat.completions.create.called)
+        kwargs = client.chat.completions.create.call_args.kwargs
+        self.assertIn("parallel_tool_calls", kwargs)
+        self.assertFalse(kwargs["parallel_tool_calls"])
+
+
+class TestPilotSoftAbort(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.td = Path(self._td.name)
+        (self.td / "plans").mkdir()
+        (self.td / ".lao").mkdir()
+        init_settings(cwd=self.td)
+        self.queue = TaskQueue(db_path=self.td / ".lao" / "state.db")
+        self.mm = MagicMock()
+        self.mm.ensure_loaded.return_value = "test-model"
+
+    def tearDown(self):
+        from local_ai_agent_orchestrator.interrupts import reset_interrupt_state
+
+        reset_interrupt_state()
+        reset_settings_for_tests()
+        self._td.cleanup()
+
+    def test_abort_pilot_round_soft_clears_cancel(self):
+        from local_ai_agent_orchestrator.interrupts import (
+            pilot_round_cancel_pending,
+            request_pilot_round_cancel,
+        )
+
+        request_pilot_round_cancel()
+        agent = PilotAgent(self.mm, self.queue, on_assistant_message=lambda m: None)
+        agent._abort_pilot_round_soft()
+        self.assertFalse(pilot_round_cancel_pending())
 
 
 if __name__ == "__main__":

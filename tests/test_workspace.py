@@ -10,6 +10,7 @@ from local_ai_agent_orchestrator.state import TaskQueue
 from local_ai_agent_orchestrator.tools import (
     _workspace_root,
     pick_pilot_tools_workspace,
+    resolve_path,
     use_plan_workspace,
 )
 
@@ -94,3 +95,33 @@ class TestPerPlanWorkspace(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestResolvePathPlans(unittest.TestCase):
+    def tearDown(self):
+        reset_settings_for_tests()
+
+    def test_plans_path_resolves_from_config_when_cwd_is_plan_workspace(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".lao").mkdir(parents=True, exist_ok=True)
+            (root / "plans").mkdir(parents=True, exist_ok=True)
+            cfg = root / "factory.yaml"
+            cfg.write_text(MINIMAL_YAML.strip(), encoding="utf-8")
+            init_settings(config_path=cfg, cwd=root)
+            plan_file = root / "plans" / "Demo.md"
+            plan_file.write_text("# Demo\n", encoding="utf-8")
+            q = TaskQueue()
+            pid = q.register_plan("Demo.md", plan_file.read_text())
+            sub = q.workspace_for_plan(pid)
+            sub.mkdir(parents=True, exist_ok=True)
+            from local_ai_agent_orchestrator.tools.meta import push_active_workspace, reset_active_workspace
+
+            tok = push_active_workspace(sub)
+            try:
+                pth = resolve_path("plans/Demo.md")
+                self.assertIsNotNone(pth)
+                self.assertEqual(pth, plan_file.resolve())
+            finally:
+                reset_active_workspace(tok)
+            q.close()

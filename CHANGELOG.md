@@ -6,6 +6,103 @@ All notable changes to **Local AI Agent Orchestrator** are recorded here. For in
 
 (nothing yet)
 
+## v3.1.1 — End-to-end agentic workflow (2026-04-19)
+
+This release turns LAO from a plan-execution engine into a full ideation→DONE
+agentic workflow driven by many small local models instead of one huge one.
+Everything below is additive and gated behind settings; legacy plans with no
+acceptance contracts degrade gracefully onto the v3.1.0 code path.
+
+### New phases
+- **Ideator + Spec Doctor** (`ideation.py`, `spec_doctor.py`): new pilot slash
+  commands `/ideate <topic>`, `/lock`, `/spec`. The Ideator iterates with the
+  user to produce `.lao/ideation/IDEATION.md`; the Spec Doctor then turns the
+  locked draft into `SPEC.md` with numbered, machine-verifiable acceptance
+  criteria (`AC-N`) and a risk register. Pilot also gains `/done [plan_id]`
+  for a live DONE-gate report.
+- **Contract Author** (`contract_author.py`): after the architect produces
+  tasks with `acceptance_ids`, a small analyst-class model writes failing
+  acceptance tests into `tests/acceptance/` and persists executable
+  `acceptance.commands` on each task — TDD before any production code is
+  written.
+- **TDD inner repair loop** (`phases._coder_inner_repair_loop`): after the
+  coder finishes, the acceptance runner is executed; on failure the coder is
+  re-invoked with the test output until tests pass, bounded by
+  `inner_repair_max_iterations` and `inner_repair_token_budget`. Repair count
+  is persisted on the task.
+- **Critic Quorum** (`critic_quorum.py`): N-model consensus review,
+  quorum size auto-scaled from `task.risk` (low=1, med=3, high=5). Votes are
+  aggregated and findings deduped by `(file_path, message)`; a quorum reject
+  demotes the task back to rework with merged critical/major findings. Opt-in
+  via `agentic.critic_quorum_enabled`.
+- **Plan Integrator** (`plan_integrator.py`): when a plan passes the DONE
+  gate, the integrator re-runs every task's acceptance commands across the
+  whole plan (regression sweep), computes AC coverage (declared vs passing),
+  appends a JSON record to `.lao/decisions.jsonl`, and writes a one-line
+  summary into `LAO_MEMORY.md` so future runs see the decision in their
+  system-prompt prelude.
+
+### Definition of DONE
+- **Acceptance runner** (`services/acceptance.py`): deterministic shell
+  executor for contract-defined tests; results recorded as `acceptance`
+  validation runs alongside existing lint/static checks.
+- **Plan-level DONE gate** (`done_gate.py`): a plan is DONE only when
+  (a) every task is `completed`, (b) every task with a contract has all
+  commands green, (c) every declared `AC-N` has a passing run, (d) the
+  critic quorum (when enabled) approves, (e) no outstanding critical
+  findings and majors ≤ task budget, (f) no `BLOCKING` open questions
+  remain in SPEC.md. Gate results persisted in the new `plan_done_gate`
+  table. Legacy plans without contracts continue to close on the existing
+  heuristic.
+
+### State + schema
+- New `MicroTask` fields (migrated in place): `acceptance: dict`,
+  `risk: "low"|"med"|"high"`, `inner_repairs: int`, `critic_votes_json`.
+- New `plan_done_gate` table with status + full report JSON.
+- New CRUD helpers: `set_task_acceptance`, `set_task_risk`,
+  `set_task_critic_votes`, `increment_inner_repairs`,
+  `upsert_plan_done_gate`, `get_plan_done_gate`.
+
+### Pilot UX + tool-call storm fix
+- **`parallel_tool_calls: false`** is now sent on every pilot chat
+  completion, with a `TypeError` fallback for older OpenAI clients. This is
+  the real fix for the LM-Studio log showing 60 `file_read` calls streamed
+  from a single Gemma response before the client could trim them — the model
+  is now forced to emit one tool call per response, observe its result, then
+  reason again.
+- `PILOT_SYSTEM` gains a **"Tool-call discipline"** block telling the model
+  to emit one call at a time, never re-read files it already read this
+  conversation, and stop if it finds itself wanting to prefetch >3 files in a
+  row.
+
+### Settings (new `agentic:` block in `factory.yaml`)
+```yaml
+agentic:
+  contract_author_enabled: true
+  inner_repair_max_iterations: 3
+  inner_repair_token_budget: 6000
+  critic_quorum_enabled: false
+  critic_quorum_size: 3
+  critic_models: []
+  critic_keep_reviewer_vote: true
+  spec_doctor_enabled: true
+  decision_log_enabled: true
+  plan_integrator_enabled: true
+```
+
+### Prompts
+- Extended `ARCHITECT_SYSTEM` + JSON schema: tasks now carry
+  `acceptance`, `risk`, `token_budget_estimate`.
+- New `CONTRACT_AUTHOR_SYSTEM`, `CRITIC_SYSTEM`, `IDEATION_SYSTEM`,
+  `SPEC_DOCTOR_SYSTEM` plus matching message builders.
+
+### Tests
+- 305 tests pass (up from 235). New suites:
+  `test_done_gate`, `test_contract_author`, `test_coder_inner_repair`,
+  `test_critic_quorum`, `test_ideation_spec_doctor`, `test_plan_integrator`,
+  plus `TestPilotParallelToolCallsDisabled` regression-guarding the
+  tool-call storm fix.
+
 ## v3.1.0 — Reliability & Quality Overhaul (2026-04-19)
 
 ### Tier 1 — correctness & determinism

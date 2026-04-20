@@ -397,8 +397,16 @@ def _run_init(cwd: Path, *, skip_readme: bool, no_interactive: bool) -> None:
         else:
             ui.print_info(f"Plan already exists: {plan_path}")
 
-    ui.print_note("Workspace is ready.")
-    _post_action_prompt(cwd, cwd / "factory.yaml", default="health")
+    ui.print_note("Workspace is ready — starting LAO.")
+    init_settings(config_path=cwd / "factory.yaml", cwd=cwd)
+    from local_ai_agent_orchestrator import runner
+
+    runner.run_entry(
+        plan=None,
+        single_run=False,
+        use_tui=ui.is_tty(),
+        skip_initial_banner=False,
+    )
 
 
 def _configure_models_interactive(cwd: Path, cfg_path: Path | None) -> int:
@@ -551,6 +559,20 @@ def _home_menu(cwd: Path, cfg_path: Path | None) -> str:
     )
 
 
+def _env_interactive_menu() -> bool:
+    """When true, bare ``lao`` always shows the full home menu (legacy behavior)."""
+    import os
+
+    v = os.getenv("LAO_INTERACTIVE_MENU", "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _workspace_ready_for_fast_path(cwd: Path, cfg_path: Path | None) -> bool:
+    """True when a workspace config exists (runner validates LM Studio after)."""
+    cfg = cfg_path or (cwd / "factory.yaml")
+    return cfg.is_file()
+
+
 def _post_action_prompt(cwd: Path, config_path: Path, default: str = "run") -> None:
     choice = ui.ask_choice(
         "Next Action",
@@ -571,7 +593,12 @@ def _post_action_prompt(cwd: Path, config_path: Path, default: str = "run") -> N
         init_settings(config_path=config_path, cwd=cwd)
         from local_ai_agent_orchestrator import runner
 
-        runner.run_entry(plan=None, single_run=False, use_tui=ui.is_tty())
+        runner.run_entry(
+            plan=None,
+            single_run=False,
+            use_tui=ui.is_tty(),
+            skip_initial_banner=False,
+        )
 
 
 def _run_projects_command(
@@ -920,7 +947,11 @@ def main(argv: list[str] | None = None) -> None:
         cfg_path = _resolve_config_path(cwd, args.config)
 
         if args.command is None and sys.stdout.isatty():
-            action = _home_menu(cwd, cfg_path)
+            if not _env_interactive_menu() and _workspace_ready_for_fast_path(cwd, cfg_path):
+                args.command = "run"
+                action = None
+            else:
+                action = _home_menu(cwd, cfg_path)
             if action == "init":
                 _run_init(cwd, skip_readme=False, no_interactive=False)
                 return
@@ -1246,7 +1277,12 @@ def main(argv: list[str] | None = None) -> None:
                 result = enter_pilot_mode(mm, q, use_tui=False)
 
             if result == PilotResult.RESUME_PIPELINE:
-                ok = runner.run_entry(plan=None, single_run=False, use_tui=use_tui)
+                ok = runner.run_entry(
+                    plan=None,
+                    single_run=False,
+                    use_tui=use_tui,
+                    skip_initial_banner=False,
+                )
                 if ok is False:
                     raise SystemExit(1)
             return
@@ -1257,6 +1293,7 @@ def main(argv: list[str] | None = None) -> None:
                 plan=args.plan,
                 single_run=args.single_run,
                 use_tui=use_tui,
+                skip_initial_banner=False,
             )
             if ok is False:
                 raise SystemExit(1)

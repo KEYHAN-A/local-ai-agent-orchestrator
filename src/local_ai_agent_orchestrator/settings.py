@@ -199,6 +199,18 @@ class Settings:
     compaction_enabled: bool = True
     compaction_keep_recent: int = 8
 
+    # End-to-end agentic v1 ─────────────────────────────────────────
+    contract_author_enabled: bool = True
+    inner_repair_max_iterations: int = 3
+    inner_repair_token_budget: int = 6000
+    critic_quorum_enabled: bool = False
+    critic_quorum_size: int = 3
+    critic_models: list[str] = field(default_factory=list)
+    critic_keep_reviewer_vote: bool = True
+    spec_doctor_enabled: bool = True
+    decision_log_enabled: bool = True
+    plan_integrator_enabled: bool = True
+
     @property
     def openai_base_url(self) -> str:
         return f"{self.lm_studio_base.rstrip('/')}/v1"
@@ -525,6 +537,44 @@ def _merge_yaml(base: Settings, data: dict[str, Any], yaml_root: Path) -> Settin
                     str(otel_cfg["endpoint"]) if otel_cfg.get("endpoint") else base.otel.endpoint
                 ),
                 service_name=str(otel_cfg.get("service_name", base.otel.service_name)),
+            ),
+        )
+
+    agentic_cfg = data.get("agentic") or {}
+    if isinstance(agentic_cfg, dict):
+        base = replace(
+            base,
+            contract_author_enabled=bool(
+                agentic_cfg.get("contract_author_enabled", base.contract_author_enabled)
+            ),
+            inner_repair_max_iterations=int(
+                agentic_cfg.get("inner_repair_max_iterations", base.inner_repair_max_iterations)
+            ),
+            inner_repair_token_budget=int(
+                agentic_cfg.get("inner_repair_token_budget", base.inner_repair_token_budget)
+            ),
+            critic_quorum_enabled=bool(
+                agentic_cfg.get("critic_quorum_enabled", base.critic_quorum_enabled)
+            ),
+            critic_quorum_size=max(
+                1, int(agentic_cfg.get("critic_quorum_size", base.critic_quorum_size))
+            ),
+            critic_models=[
+                str(x).strip()
+                for x in (agentic_cfg.get("critic_models") or base.critic_models)
+                if str(x).strip()
+            ],
+            critic_keep_reviewer_vote=bool(
+                agentic_cfg.get("critic_keep_reviewer_vote", base.critic_keep_reviewer_vote)
+            ),
+            spec_doctor_enabled=bool(
+                agentic_cfg.get("spec_doctor_enabled", base.spec_doctor_enabled)
+            ),
+            decision_log_enabled=bool(
+                agentic_cfg.get("decision_log_enabled", base.decision_log_enabled)
+            ),
+            plan_integrator_enabled=bool(
+                agentic_cfg.get("plan_integrator_enabled", base.plan_integrator_enabled)
             ),
         )
 

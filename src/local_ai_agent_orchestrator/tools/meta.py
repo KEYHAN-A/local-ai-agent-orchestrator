@@ -123,14 +123,27 @@ def resolve_path(path: str | None) -> Optional[Path]:
     optionally-allowed project directory.
     """
     root = _workspace_root().resolve()
+    s = get_settings()
+    cfg_dir = s.config_dir.resolve()
+    plans_dir = s.plans_dir.resolve()
     if path is None:
         return root
+    norm = path.replace("\\", "/").strip()
     p = Path(path)
-    resolved = p.resolve() if p.is_absolute() else (root / p).resolve()
-    roots = [root]
+    if p.is_absolute():
+        resolved = p.resolve()
+    else:
+        if norm == "plans" or norm.startswith("plans/"):
+            rel = norm[6:] if norm.startswith("plans/") else ""
+            resolved = (plans_dir / rel).resolve() if rel else plans_dir.resolve()
+        elif norm in ("factory.yaml", "factory.yml"):
+            resolved = (cfg_dir / Path(norm).name).resolve()
+        else:
+            resolved = (root / p).resolve()
+    roots = [root, cfg_dir, plans_dir]
     allowed = _ALLOWED_PROJECT.get()
     if allowed is not None:
-        roots.append(allowed)
+        roots.append(allowed.resolve())
     for candidate in roots:
         try:
             resolved.relative_to(candidate)

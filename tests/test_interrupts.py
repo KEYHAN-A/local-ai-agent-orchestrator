@@ -6,12 +6,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from local_ai_agent_orchestrator import phases, runner
 from local_ai_agent_orchestrator.interrupts import (
     interruptible_sleep,
+    pilot_round_cancel_pending,
     register_interrupt,
+    request_pilot_round_cancel,
     reset_interrupt_state,
     should_shutdown,
 )
@@ -45,6 +47,24 @@ class TestInterrupts(unittest.TestCase):
     def tearDown(self):
         reset_interrupt_state()
         reset_settings_for_tests()
+
+    def test_signal_tui_pilot_phase_first_sigint_soft_cancel(self):
+        reset_interrupt_state()
+        ui = MagicMock()
+        ui.is_pilot_cancellable_phase.return_value = True
+        with patch("local_ai_agent_orchestrator.unified_ui.get_unified_ui", return_value=ui):
+            runner._signal_handler(None, None)
+        self.assertFalse(should_shutdown())
+        self.assertTrue(pilot_round_cancel_pending())
+
+    def test_signal_tui_pilot_phase_second_sigint_registers_shutdown(self):
+        reset_interrupt_state()
+        request_pilot_round_cancel()
+        ui = MagicMock()
+        ui.is_pilot_cancellable_phase.return_value = True
+        with patch("local_ai_agent_orchestrator.unified_ui.get_unified_ui", return_value=ui):
+            runner._signal_handler(None, None)
+        self.assertTrue(should_shutdown())
 
     def test_signal_handler_is_graceful_then_hard_abort(self):
         runner._signal_handler(None, None)

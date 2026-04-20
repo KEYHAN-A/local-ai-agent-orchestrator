@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-ai-agent-orchestrator"
-version = "3.1.0"
+version = "3.1.1"
 description = "LAO — Pilot Mode plus planner→coder→verifier→reviewer orchestration over LM Studio / OpenAI-compatible APIs: structured tools, permissions, skills, hierarchical memory, optional MCP, SQLite state, and optional per-plan Git."
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -46,3 +46,6 @@ Documentation = "https://lao.keyhan.info"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
